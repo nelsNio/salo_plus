@@ -10,29 +10,25 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/sqlite"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 func main() {
 
-	// inicializar DB
-	db, err := gorm.Open(sqlite.Open("database.db"), &gorm.Config{})
+	// Leer la variable de entorno
+	dsn := "postgres://u3qj45epbhvltf:pddd42837d052b70a9927f5f61b59b26d883dd3ff3b77488792dcc800077d4fa8@cer3tutrbi7n1t.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d943tmcccgq9ki"
+
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		panic("No se pudo conectar a la base de datos: " + err.Error())
+		log.Fatal("Error conectando a la base de datos:", err)
 	}
+	log.Println("Migración completada correctamente.")
 
 	// migrar modelos (solo productos/ventas/counters)
 	if err := db.AutoMigrate(&models.Producto{}, &models.Venta{}, &models.Counter{}); err != nil {
 		panic(err)
 	}
-	// Quitar índice único legado sobre productos.codigo_barras si existe (evita UNIQUE con "")
-	db.Exec("DROP INDEX IF EXISTS idx_productos_codigo_barras")
-	db.Exec("DROP INDEX IF EXISTS uix_productos_codigo_barras")
-	db.Exec("DROP INDEX IF EXISTS productos_codigo_barras_uindex")
-	db.Exec("DROP INDEX IF EXISTS productos_codigo_barras")
-	// Normalizar valores vacíos a NULL para permitir múltiples NULLs si queda algún índice único
-	db.Exec("UPDATE productos SET codigo_barras = NULL WHERE codigo_barras = ''")
 
 	r := gin.Default()
 
