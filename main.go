@@ -29,6 +29,20 @@ func main() {
 	if err := db.AutoMigrate(&models.Producto{}, &models.Venta{}, &models.Counter{}); err != nil {
 		panic(err)
 	}
+	// Asegurar que SKUID pueda ser NULL y limpiar valores 0 que rompen la FK
+	if err := db.Exec(`ALTER TABLE "venta" ALTER COLUMN "sk_uid" DROP NOT NULL`).Error; err != nil {
+		log.Println("Aviso: no se pudo alterar columna venta.sk_uid (puede no existir):", err)
+	}
+	if err := db.Exec(`UPDATE "venta" SET "sk_uid" = NULL WHERE "sk_uid" = 0`).Error; err != nil {
+		log.Println("Aviso: no se pudo limpiar valores 0 en venta.sk_uid:", err)
+	}
+	// Intentar también con sku_id por si la columna tiene este nombre
+	if err := db.Exec(`ALTER TABLE "venta" ALTER COLUMN "sku_id" DROP NOT NULL`).Error; err != nil {
+		log.Println("Aviso: no se pudo alterar columna venta.sku_id (puede no existir):", err)
+	}
+	if err := db.Exec(`UPDATE "venta" SET "sku_id" = NULL WHERE "sku_id" = 0`).Error; err != nil {
+		log.Println("Aviso: no se pudo limpiar valores 0 en venta.sku_id:", err)
+	}
 
 	r := gin.Default()
 
@@ -289,6 +303,10 @@ func main() {
 		}
 		if v.Fecha.IsZero() {
 			v.Fecha = time.Now()
+		}
+		// Normalizar SKUID: si viene 0, poner NULL para evitar violar FK
+		if v.SKUID != nil && *v.SKUID == 0 {
+			v.SKUID = nil
 		}
 		v.Total = float64(v.Cantidad) * v.PrecioUnitario
 		tx := db.Begin()

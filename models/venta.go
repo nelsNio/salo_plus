@@ -10,10 +10,8 @@ import (
 type Venta struct {
 	gorm.Model
 	Folio          uint      `json:"folio"`
-	SKUID          uint      `json:"sku_id"`
+	SKUID          *uint     `json:"sku_id,omitempty"`
 	LoteID         *uint     `json:"lote_id"`
-	Lote           Lote      `gorm:"foreignKey:LoteID" json:"lote"`
-	SKU            SKU       `gorm:"foreignKey:SKUID" json:"sku"`
 	ProductoID     uint      `json:"producto_id"`
 	Producto       Producto  `gorm:"foreignKey:ProductoID" json:"producto"`
 	Cantidad       int       `json:"cantidad"`
