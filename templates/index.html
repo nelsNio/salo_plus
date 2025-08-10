@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Inventario - Droguería</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="app-header">
+        <img src="/images/logo.jpg" alt="Logo" class="app-logo">
+        <div class="app-title">
+            <div class="name">Droguería Salo Plus</div>
+            <div class="nit">NIT 1.049.647.310-5</div>
+        </div>
+    </header>
+    <h1>Inventario</h1>
+    
+    <h3>Agregar producto</h3>
+<form id="formProducto">
+    <input type="date" name="fecha_ingreso" placeholder="Fecha ingreso" required>
+    <input name="nombre" placeholder="Nombre y concentración" required>
+    <input name="laboratorio" placeholder="Laboratorio">
+    <input name="presentacion" placeholder="Presentación">
+    <input type="number" name="cantidad" placeholder="Cantidad">
+    <input name="lote" placeholder="Lote">
+    <input name="registro_invima" placeholder="Registro INVIMA">
+    <input type="date" name="fecha_venc" placeholder="Fecha vencimiento">
+    <input name="observacion" placeholder="Observación">
+    <button type="submit">Guardar</button>
+</form>
+<h3>Buscar</h3>
+<input id="busqueda" placeholder="Buscar por nombre, lote o INVIMA">
+
+    <h2>Lista de Productos</h2>
+   <table>
+<thead>
+<tr>
+<th>Fecha ingreso</th><th>Nombre</th><th>Lab</th><th>Presentación</th>
+<th>Cant</th><th>Lote</th><th>Registro INVIMA</th><th>Vencimiento</th><th>Obs</th>
+</tr>
+</thead>
+<tbody id="tablaProductos"></tbody>
+</table>
+
+    <a href="/admin_ventas">Ir a Ventas</a>
+
+<script src="/static/script.js"></script>
+</body>
+</html>

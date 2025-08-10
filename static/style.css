@@ -1,0 +1,88 @@
+:root {
+  --primary: #0066cc;
+  --primary-dark: #004b99;
+  --accent: #ffcc00;
+  --bg: #f7f9fc;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --success: #2e7d32;
+  --danger: #c62828;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+h1, h2, h3 {
+  color: var(--primary-dark);
+}
+
+input, select, button {
+  border: 1px solid var(--border);
+}
+
+button {
+  background: var(--primary);
+  color: white;
+  border-radius: 6px;
+  padding: 8px 12px;
+  border: none;
+  cursor: pointer;
+}
+button:hover { background: var(--primary-dark); }
+
+table th {
+  background: var(--primary);
+  color: #fff;
+}
+table td, table th { border-color: var(--border); }
+
+/* Toast theming */
+#toast-container { z-index: 9999; position: fixed; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 8px; }
+.toast { padding: 10px 14px; border-radius: 6px; color: #fff; box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
+.toast-info { background: var(--primary); }
+.toast-success { background: #16a34a; }
+.toast-error { background: #dc2626; }
+
+/* Header with logo */
+.app-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.app-title .name { font-weight: 700; font-size: 20px; color: var(--primary-dark); }
+.app-title .nit { font-size: 12px; color: var(--muted); }
+.app-logo { height: 56px; width: auto; max-width: 180px; object-fit: contain; }
+@media (max-width: 480px) {
+  .app-logo { height: 40px; max-width: 140px; }
+}
+body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
+h1, h2 { color: #333; }
+form { margin-bottom: 20px; }
+input, button { padding: 8px; margin: 5px; }
+table { width: 100%; border-collapse: collapse; background: white; }
+th, td { padding: 10px; border: 1px solid #ccc; text-align: left; }
+button { background: #28a745; color: white; border: none; cursor: pointer; }
+button:hover { background: #218838; }
+a { display: inline-block; margin-top: 10px; }
+
+/* Toast notifications */
+#toast-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 9999;
+}
+.toast {
+  padding: 10px 14px;
+  border-radius: 6px;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  font-size: 14px;
+  max-width: 320px;
+  cursor: pointer;
+}
+.toast-info { background: #17a2b8; }
+.toast-success { background: #28a745; }
+.toast-error { background: #dc3545; }

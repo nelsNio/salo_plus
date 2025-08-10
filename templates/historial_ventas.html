@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Historial de Ventas</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="app-header">
+        <img src="/images/logo.jpg" alt="Logo" class="app-logo">
+        <div class="app-title">
+            <div class="name">Droguería Salo Plus</div>
+            <div class="nit">NIT 1.049.647.310-5</div>
+        </div>
+    </header>
+    <h1>Historial de Ventas</h1>
+    <form id="formHistorial" method="GET" action="/historial">
+        <label>Desde:</label>
+        <input type="date" name="desde" placeholder="Fecha desde">
+        <label>Hasta:</label>
+        <input type="date" name="hasta" placeholder="Fecha hasta">
+        <button type="submit">Filtrar</button>
+    </form>
+    <table>
+        <thead>
+        <tr><th>Fecha</th><th>Producto</th><th>Cantidad</th><th>Precio unitario</th><th>Total</th><th>Pago</th><th>Folio</th></tr>
+        </thead>
+        <tbody id="tablaVentasHistorial"></tbody>
+    </table>
+    <a href="/">Volver al Inventario</a>
+    <script src="/static/script.js"></script>
+</body>
+</html>
