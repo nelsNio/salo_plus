@@ -17,13 +17,16 @@
     
     <h3>Agregar producto</h3>
 <form id="formProducto">
-    <input type="date" name="fecha_ingreso" placeholder="Fecha ingreso" required>
+    <label for="fecha_ingreso">Fecha Ingreso:</label>
+    <input type="date" name="fecha_ingreso" placeholder="Fecha ingreso" required >
     <input name="nombre" placeholder="Nombre y concentración" required>
     <input name="laboratorio" placeholder="Laboratorio">
     <input name="presentacion" placeholder="Presentación">
     <input type="number" name="cantidad" placeholder="Cantidad">
     <input name="lote" placeholder="Lote">
+    <input name="codigo_barras" placeholder="Código de barras">
     <input name="registro_invima" placeholder="Registro INVIMA">
+    <label for="fecha_venc">Fecha Vencimiento:</label>
     <input type="date" name="fecha_venc" placeholder="Fecha vencimiento">
     <input name="observacion" placeholder="Observación">
     <button type="submit">Guardar</button>
@@ -36,7 +39,7 @@
 <thead>
 <tr>
 <th>Fecha ingreso</th><th>Nombre</th><th>Lab</th><th>Presentación</th>
-<th>Cant</th><th>Lote</th><th>Registro INVIMA</th><th>Vencimiento</th><th>Obs</th>
+<th>Cant</th><th>Lote</th><th>Código de barras</th><th></th>Registro INVIMA</th><th>Vencimiento</th><th>Obs</th>
 </tr>
 </thead>
 <tbody id="tablaProductos"></tbody>

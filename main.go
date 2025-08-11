@@ -25,8 +25,8 @@ func main() {
 	}
 	log.Println("Migración completada correctamente.")
 
-	// migrar modelos (solo productos/ventas/counters)
-	if err := db.AutoMigrate(&models.Producto{}, &models.Venta{}, &models.Counter{}); err != nil {
+	// migrar modelos (productos/ventas/items/counters)
+	if err := db.AutoMigrate(&models.Producto{}, &models.Venta{}, &models.Item{}, &models.Counter{}); err != nil {
 		panic(err)
 	}
 	// Asegurar que SKUID pueda ser NULL y limpiar valores 0 que rompen la FK
@@ -83,7 +83,7 @@ func main() {
 		return c.Value, nil
 	}
 
-	// ventas en lote (atómicas)
+	// ventas en lote (atómicas) - ahora crea UNA sola venta con múltiples items bajo un mismo folio
 	r.POST("/ventas/lote", func(c *gin.Context) {
 		// payload esperado
 		type item struct {
@@ -121,9 +121,6 @@ func main() {
 			return
 		}
 
-		var ventas []models.Venta
-		var total float64
-
 		// Generar un solo folio para toda la transacción en lote
 		folioLote, err := nextFolio(tx)
 		if err != nil {
@@ -132,8 +129,9 @@ func main() {
 			return
 		}
 
+		// Validar stock y calcular total
+		var total float64
 		for _, it := range in.Items {
-			// flujo por Producto (único soportado)
 			var p models.Producto
 			if err := tx.First(&p, it.ProductoID).Error; err != nil {
 				tx.Rollback()
@@ -145,16 +143,36 @@ func main() {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuficiente"})
 				return
 			}
-			v := models.Venta{
-				Fecha:          fecha,
-				TipoPago:       in.TipoPago,
+			total += float64(it.Cantidad) * it.PrecioUnitario
+		}
+
+		// Construir venta con items
+		venta := models.Venta{
+			Fecha:    fecha,
+			TipoPago: in.TipoPago,
+			Folio:    folioLote,
+			Total:    total,
+		}
+		venta.Items = make([]models.Item, 0, len(in.Items))
+		for _, it := range in.Items {
+			venta.Items = append(venta.Items, models.Item{
 				ProductoID:     it.ProductoID,
 				Cantidad:       it.Cantidad,
 				PrecioUnitario: it.PrecioUnitario,
-				Total:          float64(it.Cantidad) * it.PrecioUnitario,
-				Folio:          folioLote,
-			}
-			if err := tx.Create(&v).Error; err != nil {
+			})
+		}
+
+		// Crear venta con asociación de Items (asegurando guardar todos los campos y las asociaciones)
+		if err := tx.Session(&gorm.Session{FullSaveAssociations: true}).Create(&venta).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Descontar stock por cada item
+		for _, it := range venta.Items {
+			var p models.Producto
+			if err := tx.First(&p, it.ProductoID).Error; err != nil {
 				tx.Rollback()
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
@@ -165,13 +183,13 @@ func main() {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
-			total += v.Total
-			ventas = append(ventas, v)
 		}
 
-		// cargar relación producto para respuesta
-		for i := range ventas {
-			tx.Preload("Producto").First(&ventas[i], ventas[i].ID)
+		// Recargar asociaciones
+		if err := tx.Preload("Items").Preload("Items.Producto").First(&venta, venta.ID).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 
 		if err := tx.Commit().Error; err != nil {
@@ -180,7 +198,7 @@ func main() {
 		}
 
 		c.JSON(http.StatusCreated, gin.H{
-			"ventas":     ventas,
+			"venta":      venta,
 			"total":      total,
 			"fecha":      fecha,
 			"folio_lote": folioLote,
@@ -285,35 +303,48 @@ func main() {
 		c.JSON(http.StatusOK, productos)
 	})
 
-	// -------------------- Ventas --------------------
+	// -------------------- Ventas {individual}--------------------
 	r.POST("/ventas", func(c *gin.Context) {
 		var v models.Venta
 		if err := c.ShouldBindJSON(&v); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		var p models.Producto
-		if err := db.First(&p, v.ProductoID).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Producto no encontrado"})
+		// Validar items
+		if len(v.Items) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "items vacíos"})
 			return
 		}
-		if p.Cantidad < v.Cantidad {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuficiente"})
-			return
-		}
+		// Normalizar fecha y SKU
 		if v.Fecha.IsZero() {
 			v.Fecha = time.Now()
 		}
-		// Normalizar SKUID: si viene 0, poner NULL para evitar violar FK
 		if v.SKUID != nil && *v.SKUID == 0 {
 			v.SKUID = nil
 		}
-		v.Total = float64(v.Cantidad) * v.PrecioUnitario
+		// Validar stock por cada item y calcular total
+		var total float64
 		tx := db.Begin()
 		if err := tx.Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		for i := range v.Items {
+			var p models.Producto
+			if err := tx.First(&p, v.Items[i].ProductoID).Error; err != nil {
+				tx.Rollback()
+				c.JSON(http.StatusNotFound, gin.H{"error": "Producto no encontrado"})
+				return
+			}
+			if p.Cantidad < v.Items[i].Cantidad {
+				tx.Rollback()
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuficiente"})
+				return
+			}
+			total += float64(v.Items[i].Cantidad) * v.Items[i].PrecioUnitario
+		}
+		v.Total = total
+		// Asignar folio
 		folio, err := nextFolio(tx)
 		if err != nil {
 			tx.Rollback()
@@ -321,22 +352,37 @@ func main() {
 			return
 		}
 		v.Folio = folio
-		if err := tx.Create(&v).Error; err != nil {
+		// Crear venta con asociación de Items (asegurando guardar todos los campos y las asociaciones)
+		if err := tx.Session(&gorm.Session{FullSaveAssociations: true}).Create(&v).Error; err != nil {
 			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		p.Cantidad -= v.Cantidad
-		if err := tx.Save(&p).Error; err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
+		// Descontar stock por cada item
+		for i := range v.Items {
+			var p models.Producto
+			if err := tx.First(&p, v.Items[i].ProductoID).Error; err != nil {
+				tx.Rollback()
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			p.Cantidad -= v.Items[i].Cantidad
+			if err := tx.Save(&p).Error; err != nil {
+				tx.Rollback()
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 		}
 		if err := tx.Commit().Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusCreated, gin.H{"venta": v, "producto": p})
+		// Recargar con asociaciones para respuesta
+		if err := db.Preload("Items").Preload("Items.Producto").First(&v, v.ID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"venta": v})
 	})
 
 	// listar ventas con filtros y totales (solo Producto)
@@ -345,7 +391,7 @@ func main() {
 		hasta := c.Query("hasta") // YYYY-MM-DD
 
 		var ventas []models.Venta
-		query := db.Preload("Producto").Order("fecha desc")
+		query := db.Preload("Items").Preload("Items.Producto").Order("fecha desc")
 
 		if desde != "" {
 			if d, err := time.Parse("2006-01-02", desde); err == nil {

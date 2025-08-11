@@ -147,6 +147,21 @@ function openPrintWindow(venta) {
         if (!w) { showToast('Bloqueado por el navegador: habilita ventanas emergentes para imprimir', 'error'); return; }
         const fecha = formatDateTimeLocal(venta.fecha);
         const folio = (venta && typeof venta.folio !== 'undefined' && venta.folio !== null) ? `V-${venta.folio}` : `V-${Date.now()}`;
+        // Preparar items desde el nuevo modelo (venta.items)
+        const items = Array.isArray(venta.items) && venta.items.length > 0
+            ? venta.items
+            : (venta.producto ? [{ producto: venta.producto, cantidad: venta.cantidad, precio_unitario: venta.precio_unitario, total: venta.total }] : []);
+        const computedTotal = (venta.total != null)
+            ? Number(venta.total)
+            : items.reduce((acc, it) => acc + Number((it.cantidad||0) * (it.precio_unitario||0)), 0);
+        const rows = items.map(it => `
+          <tr>
+            <td>${it.producto?.nombre ?? ''}</td>
+            <td>${it.cantidad ?? ''}</td>
+            <td>${formatMoney(it.precio_unitario ?? 0)}</td>
+            <td>${formatMoney((it.cantidad||0) * (it.precio_unitario||0))}</td>
+          </tr>
+        `).join('');
         const html = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Comprobante de venta</title>
 ${buildReceiptStyles()}
@@ -158,22 +173,15 @@ ${buildReceiptStyles()}
   <table>
     <thead><tr><th>Producto</th><th>Cantidad</th><th>Precio unitario</th><th>Total</th></tr></thead>
     <tbody>
-      <tr>
-        <td>${venta.producto?.nombre ?? ''}</td>
-        <td>${venta.cantidad}</td>
-        <td>${formatMoney(venta.precio_unitario)}</td>
-        <td>${formatMoney(venta.total)}</td>
-      </tr>
+      ${rows || ''}
     </tbody>
   </table>
-  <div class="tot">TOTAL: $ ${formatMoney(venta.total)}</div>
+  <div class="tot">TOTAL: $ ${formatMoney(computedTotal)}</div>
   <button onclick="window.print()">Imprimir</button>
+  <button onclick="window.close()">Cerrar</button>
 </body></html>`;
-        w.document.open();
         w.document.write(html);
         w.document.close();
-        // Auto print after load
-        w.onload = () => w.print();
     } catch (e) {
         console.error(e);
         showToast('No se pudo abrir la ventana de impresión', 'error');
@@ -197,23 +205,31 @@ document.addEventListener('DOMContentLoaded', function() {
     if (formVenta) {
         formVenta.addEventListener('submit', async function(e) {
             e.preventDefault();
-            let datos = Object.fromEntries(new FormData(e.target).entries());
-            datos.cantidad = parseInt(datos.cantidad || "0");
-            datos.producto_id = parseInt(datos.producto_id);
-            datos.precio_unitario = parseFloat(datos.precio_unitario);
-            datos.tipo_pago = (document.getElementById('tipoPago')?.value) || 'efectivo';
+            const formVals = Object.fromEntries(new FormData(e.target).entries());
+            const cantidad = parseInt(formVals.cantidad || "0");
+            const producto_id = parseInt(formVals.producto_id);
+            const precio_unitario = parseFloat(formVals.precio_unitario);
+            const tipo_pago = (document.getElementById('tipoPago')?.value) || 'efectivo';
             // Establecer fecha por defecto hoy si está vacía y normalizar a ISO 8601 (preserva hora actual)
-            if (!datos.fecha || datos.fecha.trim() === "") {
-                datos.fecha = new Date().toISOString();
+            let fecha = formVals.fecha;
+            if (!fecha || fecha.trim() === "") {
+                fecha = new Date().toISOString();
             } else {
-                const iso = isoFromDateInput(datos.fecha);
-                if (iso) datos.fecha = iso; else delete datos.fecha;
+                const iso = isoFromDateInput(fecha);
+                if (iso) fecha = iso; else fecha = undefined;
             }
+            const payload = {
+                tipo_pago,
+                ...(fecha ? { fecha } : {}),
+                items: [
+                    { producto_id, cantidad, precio_unitario }
+                ]
+            };
             try {
                 const resp = await fetch("/ventas", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(datos)
+                    body: JSON.stringify(payload)
                 });
                 if (!resp.ok) {
                     let err = await resp.json().catch(() => ({}));
@@ -430,17 +446,43 @@ document.addEventListener('DOMContentLoaded', function() {
                 const tbody = document.getElementById('tablaVentasHistorial');
                 if (tbody) {
                     tbody.innerHTML = '';
-                    (data.ventas || []).forEach(v => {
+                    (data.ventas || []).forEach((v, idx) => {
+                        const totalVenta = Number(v.total || 0);
+                        const itemsRows = (v.items || []).map(it => {
+                            const totalItem = (it.cantidad || 0) * (it.precio_unitario || 0);
+                            return `<tr>
+                                <td>${it.producto?.nombre ?? ''}</td>
+                                <td>${it.cantidad ?? ''}</td>
+                                <td>${it.precio_unitario != null ? Number(it.precio_unitario).toFixed(2) : ''}</td>
+                                <td>${Number(totalItem).toFixed(2)}</td>
+                            </tr>`;
+                        }).join('');
+                        const itemsTable = `<table style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:left;">Producto</th>
+                                    <th style="text-align:left;">Cantidad</th>
+                                    <th style="text-align:left;">Precio unitario</th>
+                                    <th style="text-align:left;">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${itemsRows || '<tr><td colspan="4">Sin items</td></tr>'}
+                            </tbody>
+                        </table>`;
+                        const jsonPretty = (() => { try { return JSON.stringify(v, null, 2); } catch { return ''; } })();
                         tbody.innerHTML += `<tr>
+                            <td>${v.ID ?? ''}</td>
                             <td>${formatDateTimeLocal(v.fecha)}</td>
-                            <td>${v.producto?.nombre ?? ''}</td>
-                            <td>${v.cantidad}</td>
-                            <td>${Number(v.precio_unitario).toFixed(2)}</td>
-                            <td>${Number(v.total).toFixed(2)}</td>
-                            <td>${v.tipo_pago || ''}</td>
-                            <td>${(typeof v.folio !== 'undefined' && v.folio !== null) ? v.folio : ''}</td>
-                        </tr>`;
+                            <td>${v.tipo_pago ?? ''}</td>
+                            <td>${v.folio ?? ''}</td>
+                            <td>${totalVenta.toFixed(2)}</td>
+                            <td>${itemsTable}</td>
+                            <td><button data-print="${idx}">Imprimir</button></td>
+                           </tr>`;
                     });
+                    // Activar impresión por fila usando el arreglo completo de ventas
+                    attachVentaPrintButtons(tbody, (data.ventas || []));
                 }
                 showToast('Historial actualizado', 'success');
             } catch (err) {
@@ -449,10 +491,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Cargas iniciales seguras
-    cargarProductos();
-    cargarVentas();
-    populateProductoSelect();
+// Cargas iniciales seguras
+cargarProductos();
+cargarVentas();
 });
 
 // 📌 Cargar productos al inicio
@@ -471,6 +512,7 @@ async function cargarProductos(q="") {
             <td>${p.presentacion}</td>
             <td>${p.cantidad}</td>
             <td>${p.lote}</td>
+            <td>${p.codigo_barras}</td>
             <td>${p.registro_invima}</td>
             <td>${p.fecha_venc}</td>
             <td>${p.observacion}</td>
@@ -492,15 +534,38 @@ async function cargarVentas() {
     if (!tbody) return; // Evitar errores si no existe la tabla
     tbody.innerHTML = "";
     ventas.forEach((v, idx) => {
+        const totalVenta = Number(v.total || 0);
+        const itemsRows = (v.items || []).map(it => {
+            const totalItem = (it.cantidad || 0) * (it.precio_unitario || 0);
+            return `<tr>
+                <td>${it.producto?.nombre ?? ''}</td>
+                <td>${it.cantidad ?? ''}</td>
+                <td>${it.precio_unitario != null ? Number(it.precio_unitario).toFixed(2) : ''}</td>
+                <td>${Number(totalItem).toFixed(2)}</td>
+            </tr>`;
+        }).join('');
+        const itemsTable = `<table style="width:100%; border-collapse:collapse;">
+            <thead>
+                <tr>
+                    <th style="text-align:left;">Producto</th>
+                    <th style="text-align:left;">Cantidad</th>
+                    <th style="text-align:left;">Precio unitario</th>
+                    <th style="text-align:left;">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${itemsRows || '<tr><td colspan="4">Sin items</td></tr>'}
+            </tbody>
+        </table>`;
+        const jsonPretty = (() => { try { return JSON.stringify(v, null, 2); } catch { return ''; } })();
         tbody.innerHTML += `<tr>
+            <td>${v.ID ?? ''}</td>
             <td>${formatDateTimeLocal(v.fecha)}</td>
-            <td>${v.producto.nombre}</td>
-            <td>${v.cantidad}</td>
-            <td>${v.precio_unitario.toFixed(2)}</td>
-            <td>${v.total.toFixed(2)}</td>
-            <td>${v.tipo_pago || ''}</td>
-            <td>${(typeof v.folio !== 'undefined' && v.folio !== null) ? v.folio : ''}</td>
-            <td><button type="button" data-print="${idx}">Imprimir</button></td>
+            <td>${v.tipo_pago ?? ''}</td>
+            <td>${v.folio ?? ''}</td>
+            <td>${totalVenta.toFixed(2)}</td>
+            <td>${itemsTable}</td>
+            <td><button data-print="${idx}">Imprimir</button></td>
         </tr>`;
     });
     attachVentaPrintButtons(tbody, ventas);
