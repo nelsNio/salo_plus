@@ -14,6 +14,8 @@
         </div>
     </header>
     <h1>Inventario</h1>
+    <a href="/admin_ventas">Ir a Ventas</a>
+    <a href="/historial_ventas">Ver Historial de Ventas</a>
     
     <h3>Agregar producto</h3>
 <form id="formProducto">
@@ -22,6 +24,8 @@
     <input name="nombre" placeholder="Nombre y concentración" required>
     <input name="laboratorio" placeholder="Laboratorio">
     <input name="presentacion" placeholder="Presentación">
+    <label for="precio_unitario">Precio Unitario:</label>
+    <input id="precio_unitario" name="precio_unitario" type="number" step="0.01" min="0" placeholder="Precio unitario" required>
     <input type="number" name="cantidad" placeholder="Cantidad">
     <input name="lote" placeholder="Lote">
     <input name="codigo_barras" placeholder="Código de barras">
@@ -36,16 +40,31 @@
 
     <h2>Lista de Productos</h2>
    <table>
-<thead>
-<tr>
-<th>Fecha ingreso</th><th>Nombre</th><th>Lab</th><th>Presentación</th><th>Precio</th>
-<th>Cant</th><th>Lote</th><th>Código de barras</th><th>Registro INVIMA</th><th>Vencimiento</th><th>Obs</th><th>Acciones</th>
-</tr>
-</thead>
+  <thead>
+  <tr>
+ <th>Fecha ingreso</th><th>Nombre</th><th>Lab</th><th>Presentación</th><th>Precio</th>
+ <th>Cant</th><th>Lote</th><th>Código de barras</th><th>Registro INVIMA</th><th>Vencimiento</th><th>Obs</th>
+  </tr>
+  </thead>
 <tbody id="tablaProductos"></tbody>
 </table>
 
-    <a href="/admin_ventas">Ir a Ventas</a>
+<div id="paginacionProductos" style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+  <button id="prevProdPage" type="button">Anterior</button>
+  <span id="prodPageInfo">Página 1/1</span>
+  <button id="nextProdPage" type="button">Siguiente</button>
+  <label for="prodPageSize" style="margin-left:12px;">Por página:</label>
+  <select id="prodPageSize">
+    <option value="10">10</option>
+    <option value="20" selected>20</option>
+    <option value="50">50</option>
+    <option value="100">100</option>
+  </select>
+  <span id="prodTotalInfo" style="margin-left:12px;color:#666"></span>
+  
+</div>
+
+
 
 <script src="/static/script.js"></script>
 </body>

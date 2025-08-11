@@ -219,17 +219,42 @@ func main() {
 	})
 	// Alias compatible: /historial
 	r.GET("/historial", func(c *gin.Context) {
-		// Ignoramos los query params aquí; el JS hace la consulta a /ventas
 		c.HTML(http.StatusOK, "historial_ventas.html", nil)
 	})
 
 	// -------------------- Productos --------------------
+	// GET /productos con paginación opcional (?page=&size=)
 	r.GET("/productos", func(c *gin.Context) {
+		pageStr := c.Query("page")
+		sizeStr := c.Query("size")
+		if pageStr != "" && sizeStr != "" {
+			var productos []models.Producto
+			var total int64
+			if err := db.Model(&models.Producto{}).Count(&total).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			page, size := 1, 20
+			fmt.Sscanf(pageStr, "%d", &page)
+			fmt.Sscanf(sizeStr, "%d", &size)
+			if page < 1 { page = 1 }
+			if size < 1 { size = 20 }
+			offset := (page - 1) * size
+			if err := db.Order("id desc").Limit(size).Offset(offset).Find(&productos).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			pages := 1
+			if size > 0 { pages = int((total + int64(size) - 1) / int64(size)) }
+			c.JSON(http.StatusOK, gin.H{"items": productos, "total": total, "page": page, "pages": pages})
+			return
+		}
 		var productos []models.Producto
-		db.Find(&productos)
+		db.Order("id desc").Find(&productos)
 		c.JSON(http.StatusOK, productos)
 	})
 
+	// POST /productos
 	r.POST("/productos", func(c *gin.Context) {
 		var p models.Producto
 		if err := c.ShouldBindJSON(&p); err != nil {
@@ -240,7 +265,6 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		// Normalizar CB vacío a NULL
 		if strings.TrimSpace(p.CodigoBarras) == "" {
 			db.Exec("UPDATE productos SET codigo_barras = NULL WHERE id = ?", p.ID)
 			p.CodigoBarras = ""
@@ -248,6 +272,7 @@ func main() {
 		c.JSON(http.StatusCreated, p)
 	})
 
+	// PUT /productos/:id
 	r.PUT("/productos/:id", func(c *gin.Context) {
 		var p models.Producto
 		if err := db.First(&p, c.Param("id")).Error; err != nil {
@@ -259,7 +284,6 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		// actualizar campos permitidos
 		p.FechaIngreso = in.FechaIngreso
 		p.Nombre = in.Nombre
 		p.Laboratorio = in.Laboratorio
@@ -270,11 +294,7 @@ func main() {
 		p.RegistroInvima = in.RegistroInvima
 		p.FechaVenc = in.FechaVenc
 		p.Observacion = in.Observacion
-
-		// Si CB viene vacío, setear NULL en DB para evitar conflictos de unicidad
-		if strings.TrimSpace(in.CodigoBarras) == "" {
-			in.CodigoBarras = ""
-		}
+		if strings.TrimSpace(in.CodigoBarras) == "" { in.CodigoBarras = "" }
 		p.CodigoBarras = in.CodigoBarras
 		if err := db.Save(&p).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -286,6 +306,7 @@ func main() {
 		c.JSON(http.StatusOK, p)
 	})
 
+	// DELETE /productos/:id
 	r.DELETE("/productos/:id", func(c *gin.Context) {
 		if err := db.Delete(&models.Producto{}, c.Param("id")).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -294,36 +315,61 @@ func main() {
 		c.Status(http.StatusNoContent)
 	})
 
-	// búsqueda por nombre, lote o registro_invima
+	// GET /buscar (paginación opcional)
 	r.GET("/buscar", func(c *gin.Context) {
 		q := c.Query("q")
+		pageStr := c.Query("page")
+		sizeStr := c.Query("size")
+		like := fmt.Sprintf("%%%s%%", q)
+		if pageStr != "" && sizeStr != "" {
+			var productos []models.Producto
+			var total int64
+			tx := db.Model(&models.Producto{})
+			if q != "" {
+				tx = tx.Where("nombre LIKE ? OR lote LIKE ? OR registro_invima LIKE ? OR codigo_barras LIKE ?", like, like, like, like)
+			}
+			if err := tx.Count(&total).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			page, size := 1, 20
+			fmt.Sscanf(pageStr, "%d", &page)
+			fmt.Sscanf(sizeStr, "%d", &size)
+			if page < 1 { page = 1 }
+			if size < 1 { size = 20 }
+			offset := (page - 1) * size
+			if err := tx.Order("id desc").Limit(size).Offset(offset).Find(&productos).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			pages := 1
+			if size > 0 { pages = int((total + int64(size) - 1) / int64(size)) }
+			c.JSON(http.StatusOK, gin.H{"items": productos, "total": total, "page": page, "pages": pages})
+			return
+		}
 		var productos []models.Producto
 		if q == "" {
-			db.Limit(50).Find(&productos)
+			db.Limit(50).Order("id desc").Find(&productos)
 		} else {
-			like := fmt.Sprintf("%%%s%%", q)
-			db.Where("nombre LIKE ? OR lote LIKE ? OR registro_invima LIKE ? OR codigo_barras LIKE ?", like, like, like, like).Find(&productos)
+			db.Where("nombre LIKE ? OR lote LIKE ? OR registro_invima LIKE ? OR codigo_barras LIKE ?", like, like, like, like).Order("id desc").Find(&productos)
 		}
 		c.JSON(http.StatusOK, productos)
 	})
 
-	// -------------------- Ventas {individual}--------------------
+	// -------------------- Ventas {individual} --------------------
 	r.POST("/ventas", func(c *gin.Context) {
 		var v models.Venta
 		if err := c.ShouldBindJSON(&v); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		// Validar items
 		if len(v.Items) == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "items vacíos"})
 			return
 		}
-		// Normalizar fecha
 		if v.Fecha.IsZero() {
 			v.Fecha = time.Now()
 		}
-		// Validar stock por cada item y calcular total
 		var total float64
 		tx := db.Begin()
 		if err := tx.Error; err != nil {
@@ -342,12 +388,10 @@ func main() {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuficiente"})
 				return
 			}
-			// Forzar precio desde BD
 			v.Items[i].PrecioUnitario = p.PrecioUnitario
 			total += float64(v.Items[i].Cantidad) * p.PrecioUnitario
 		}
 		v.Total = total
-		// Asignar folio
 		folio, err := nextFolio(tx)
 		if err != nil {
 			tx.Rollback()
@@ -355,13 +399,11 @@ func main() {
 			return
 		}
 		v.Folio = folio
-		// Crear venta con asociación de Items (asegurando guardar todos los campos y las asociaciones)
 		if err := tx.Session(&gorm.Session{FullSaveAssociations: true}).Create(&v).Error; err != nil {
 			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		// Descontar stock por cada item
 		for i := range v.Items {
 			var p models.Producto
 			if err := tx.First(&p, v.Items[i].ProductoID).Error; err != nil {
@@ -380,7 +422,6 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		// Recargar con asociaciones para respuesta
 		if err := db.Preload("Items").Preload("Items.Producto").First(&v, v.ID).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

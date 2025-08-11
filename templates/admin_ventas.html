@@ -13,10 +13,12 @@
             <div class="nit">NIT 1.049.647.310-5</div>
         </div>
     </header>
+   
+
+    <a href="/">Volver al Inventario</a>
+    <a href="/historial_ventas">Ver Historial de Ventas</a>
+
     <h1>Administración de Ventas</h1>
-
-    
-
     <h3>Registrar venta</h3>
     <form id="formVenta">
         <input id="buscarProductoVenta" placeholder="Buscar producto..." required>
@@ -24,6 +26,7 @@
             <option value="">Seleccione un producto</option>
         </select>
         <span id="precioSeleccionado" style="margin-left:8px;color:#555">Precio: $ 0.00</span>
+        <input id="precio_unitario_vista" type="number" step="0.01" placeholder="Precio" style="width:120px;margin-left:8px" readonly disabled>
         <input name="cantidad" placeholder="Cantidad" type="number" required>
         <input type="date" name="fecha" placeholder="Fecha de Venta" default= date().toISOString()>
         <select name="tipo_pago" id="tipoPago" required>
@@ -34,7 +37,6 @@
         <button type="button" id="agregarItemVenta">Agregar ítem</button>
     </form>
     
-</form>
 
 <h3>Carrito de Venta</h3>
 <table>
@@ -79,8 +81,7 @@
     <tbody id="tablaVentas"></tbody>
     </table>
 
-    <a href="/">Volver al Inventario</a>
-    <a href="/historial_ventas">Ver Historial de Ventas</a>
+    
     <script src="/static/script.js"></script>
 </body>
 </html>

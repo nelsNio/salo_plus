@@ -42,11 +42,13 @@ async function populateProductoSelect() {
         });
         // Mostrar precio inicial si hay selección
         const spanPrecio = document.getElementById('precioSeleccionado');
+        const inputPrecio = document.getElementById('precio_unitario_vista');
         if (spanPrecio) {
             const sel = select.value;
             const item = sel && window.__productosById ? window.__productosById[sel] : null;
             const precio = item ? Number(item.precio_unitario || 0) : 0;
             spanPrecio.textContent = `Precio: $ ${precio.toFixed(2)}`;
+            if (inputPrecio) inputPrecio.value = precio.toFixed(2);
         }
     } catch {}
 }
@@ -220,9 +222,11 @@ document.addEventListener('DOMContentLoaded', function() {
     if (selectProd) {
         selectProd.addEventListener('change', () => {
             const spanPrecio = document.getElementById('precioSeleccionado');
+            const inputPrecio = document.getElementById('precio_unitario_vista');
             const opt = selectProd.options[selectProd.selectedIndex];
             const precio = opt ? parseFloat(opt.getAttribute('data-precio') || '0') : 0;
             if (spanPrecio) spanPrecio.textContent = `Precio: $ ${Number(precio).toFixed(2)}`;
+            if (inputPrecio) inputPrecio.value = Number(precio).toFixed(2);
         });
     }
     // 📌 Registrar venta (con verificación de existencia)
@@ -424,7 +428,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (productos.length > 0) {
                 select.value = productos[0].ID; // corregido: usar ID consistente
                 const spanPrecio = document.getElementById('precioSeleccionado');
-                if (spanPrecio) spanPrecio.textContent = `Precio: $ ${Number(productos[0].precio_unitario||0).toFixed(2)}`;
+                const inputPrecio = document.getElementById('precio_unitario_vista');
+                const precio0 = Number(productos[0].precio_unitario||0).toFixed(2);
+                if (spanPrecio) spanPrecio.textContent = `Precio: $ ${precio0}`;
+                if (inputPrecio) inputPrecio.value = precio0;
             }
         });
     }
@@ -436,6 +443,11 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             let datos = Object.fromEntries(new FormData(e.target).entries());
             datos.cantidad = parseInt(datos.cantidad || "0");
+            datos.precio_unitario = parseFloat(datos.precio_unitario || "0");
+            if (isNaN(datos.precio_unitario) || datos.precio_unitario < 0) {
+                showToast('Precio unitario inválido', 'error');
+                return;
+            }
             // Fechas por defecto hoy si vacías (formato YYYY-MM-DD)
             const pad = n => String(n).padStart(2, '0');
             const now = new Date();
@@ -455,8 +467,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // 🔎 Búsqueda en listado de productos (tabla principal)
     const busqueda = document.getElementById("busqueda");
     if (busqueda) {
+        let t;
         busqueda.addEventListener("input", e => {
-            cargarProductos(e.target.value);
+            const q = e.target.value;
+            if (t) clearTimeout(t);
+            t = setTimeout(() => {
+                window.__prodPage = 1; // resetear a la primera página en nueva búsqueda
+                cargarProductos(q);
+            }, 300);
         });
     }
 
@@ -530,61 +548,155 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 📌 Cargar productos al inicio
 async function cargarProductos(q = "") {
-    const url = q ? `/buscar?q=${encodeURIComponent(q)}` : "/productos";
-    const res = await fetch(url);
+    const pageSizeSel = document.getElementById('prodPageSize');
+    const pageInfoEl = document.getElementById('prodPageInfo');
+    const totalInfoEl = document.getElementById('prodTotalInfo');
+    const prevBtn = document.getElementById('prevProdPage');
+    const nextBtn = document.getElementById('nextProdPage');
+
+    const size = parseInt(pageSizeSel?.value || '20');
+    const curr = window.__prodPage || 1;
+    const base = q ? `/buscar?q=${encodeURIComponent(q)}&page=${curr}&size=${size}` : `/productos?page=${curr}&size=${size}`;
+    const res = await fetch(base);
     const data = await res.json();
     const tbody = document.getElementById("tablaProductos");
     if (!tbody) return; // Evitar errores si no existe la tabla en esta página
+    // Configuración de paginado (server-side preferido)
+    let total = 0, pages = 1, page = curr;
+    if (data && Array.isArray(data.items)) {
+        total = Number(data.total || 0);
+        pages = Math.max(1, Number(data.pages || 1));
+        page = Math.min(Math.max(1, Number(data.page || curr)), pages);
+    } else if (Array.isArray(data)) {
+        total = data.length;
+        pages = Math.max(1, Math.ceil(total / Math.max(1, size)));
+        page = Math.min(Math.max(1, curr), pages);
+    }
+    window.__prodPage = page;
+    window.__prodLastQ = q;
+    if (pageInfoEl) pageInfoEl.textContent = `Página ${page}/${pages}`;
+    if (totalInfoEl) totalInfoEl.textContent = `${total} productos`;
+    if (prevBtn) {
+        prevBtn.disabled = page <= 1;
+        prevBtn.onclick = () => { window.__prodPage = Math.max(1, page - 1); cargarProductos(window.__prodLastQ || ""); };
+    }
+    if (nextBtn) {
+        nextBtn.disabled = page >= pages;
+        nextBtn.onclick = () => { window.__prodPage = Math.min(pages, page + 1); cargarProductos(window.__prodLastQ || ""); };
+    }
+    if (pageSizeSel) {
+        pageSizeSel.onchange = () => { window.__prodPage = 1; cargarProductos(window.__prodLastQ || ""); };
+    }
+
     tbody.innerHTML = "";
-    (data || []).forEach(p => {
+    const pageData = (data && Array.isArray(data.items)) ? data.items : (Array.isArray(data) ? data.slice((page-1)*size, (page-1)*size + size) : []);
+    pageData.forEach(p => {
         tbody.innerHTML += `<tr data-id="${p.ID}">
-            <td>${p.fecha_ingreso}</td>
-            <td>${p.nombre}</td>
-            <td>${p.laboratorio}</td>
-            <td>${p.presentacion}</td>
-            <td>${formatMoney(p.precio_unitario)}</td>
-            <td>${p.cantidad}</td>
-            <td>${p.lote}</td>
-            <td>${p.codigo_barras}</td>
-            <td>${p.registro_invima}</td>
-            <td>${p.fecha_venc}</td>
-            <td>${p.observacion}</td>
-            <td><button type="button" class="btn-edit-precio" data-id="${p.ID}" data-precio="${p.precio_unitario}">Editar precio</button></td>
+            <td><span class="editable-cell" data-field="fecha_ingreso" data-type="date">${p.fecha_ingreso || ''}</td>
+            <td><span class="editable-cell" data-field="nombre" data-type="text">${p.nombre || ''}</td>
+            <td><span class="editable-cell" data-field="laboratorio" data-type="text">${p.laboratorio || ''}</td>
+            <td><span class="editable-cell" data-field="presentacion" data-type="text">${p.presentacion || ''}</td>
+            <td><span class="editable-cell" data-field="precio_unitario" data-type="number" data-step="0.01">${formatMoney(p.precio_unitario)}</td>
+            <td><span class="editable-cell" data-field="cantidad" data-type="int">${Number(p.cantidad || 0)}</td>
+            <td><span class="editable-cell" data-field="lote" data-type="text">${p.lote || ''}</td>
+            <td><span class="editable-cell" data-field="codigo_barras" data-type="text">${p.codigo_barras || '-'}</td>
+            <td><span class="editable-cell" data-field="registro_invima" data-type="text">${p.registro_invima || ''}</td>
+            <td><span class="editable-cell" data-field="fecha_venc" data-type="date">${p.fecha_venc || ''}</td>
+            <td><span class="editable-cell" data-field="observacion" data-type="text">${p.observacion || ''}</td>
         </tr>`;
     });
-    // Bind editar precio
-    tbody.querySelectorAll('button.btn-edit-precio').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const id = btn.getAttribute('data-id');
-            const current = parseFloat(btn.getAttribute('data-precio') || '0');
-            const nuevo = prompt('Nuevo precio unitario:', isNaN(current) ? '' : current.toString());
-            if (nuevo == null) return; // cancel
-            const precio = parseFloat(nuevo);
-            if (isNaN(precio) || precio < 0) { showToast('Precio inválido', 'error'); return; }
-            try {
-                // Obtener producto actual para no pisar campos
-                const respGet = await fetch(`/productos`);
-                const productos = await respGet.json();
-                const prod = (productos || []).find(x => String(x.ID) === String(id));
-                if (!prod) { showToast('Producto no encontrado', 'error'); return; }
-                prod.precio_unitario = precio;
-                const resp = await fetch(`/productos/${id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(prod)
-                });
-                if (!resp.ok) {
-                    const e = await resp.json().catch(() => ({}));
-                    throw new Error(e.error || 'No se pudo actualizar');
+
+    // Inline edit genérico para todas las celdas
+    tbody.querySelectorAll('span.editable-cell').forEach(span => {
+        span.style.cursor = 'pointer';
+        span.title = 'Click para editar';
+        span.addEventListener('mouseenter', () => { const icon = span.querySelector('.edit-icon'); if (icon) icon.style.opacity = '1'; });
+        span.addEventListener('mouseleave', () => { const icon = span.querySelector('.edit-icon'); if (icon) icon.style.opacity = '0'; });
+        span.addEventListener('click', () => {
+            if (span.querySelector('input')) return; // ya en edición
+            const row = span.closest('tr');
+            const id = row?.getAttribute('data-id');
+            const field = span.getAttribute('data-field');
+            const type = span.getAttribute('data-type') || 'text';
+            const step = span.getAttribute('data-step') || undefined;
+            const originalText = span.textContent || '';
+            // Compute original parsed value for change detection
+            let originalParsed;
+            if (type === 'number') originalParsed = parseFloat(originalText.replace(/,/g, '')) || 0;
+            else if (type === 'int') originalParsed = parseInt(originalText || '0') || 0;
+            else originalParsed = (originalText || '');
+
+            const input = document.createElement('input');
+            input.type = (type === 'number' || type === 'int') ? 'number' : (type === 'date' ? 'date' : 'text');
+            if (type === 'number') input.step = step || '0.01';
+            if (type === 'int') { input.step = '1'; input.min = '0'; }
+            input.value = (type === 'number') ? String(parseFloat(originalText.replace(/,/g, '')) || 0) : originalText;
+            if (type === 'int') input.value = String(parseInt(originalText || '0'));
+            input.style.width = (type === 'text') ? 'auto' : '120px';
+
+            span.textContent = '';
+            span.appendChild(input);
+            input.focus();
+            input.select();
+
+            const commit = async (save) => {
+                if (!save) { span.textContent = originalText; return; }
+                let newValRaw = input.value;
+                let parsed;
+                if (type === 'number') {
+                    parsed = parseFloat(newValRaw);
+                    if (isNaN(parsed) || parsed < 0) { showToast('Valor inválido', 'error'); span.textContent = originalText; return; }
+                } else if (type === 'int') {
+                    parsed = parseInt(newValRaw || '0');
+                    if (isNaN(parsed) || parsed < 0) { showToast('Valor inválido', 'error'); span.textContent = originalText; return; }
+                } else if (type === 'date') {
+                    parsed = newValRaw; // YYYY-MM-DD
+                } else {
+                    parsed = newValRaw; // texto
                 }
-                showToast('Precio actualizado', 'success');
-                cargarProductos(q);
-                // Refrescar select de ventas si existe
-                if (typeof populateProductoSelect === 'function') { populateProductoSelect(); }
-            } catch (e) {
-                console.error(e);
-                showToast(e.message || 'Error al actualizar precio', 'error');
-            }
+
+                // If value didn't change, just restore without PUT
+                let changed = true;
+                if (type === 'number' || type === 'int') {
+                    changed = Number(parsed) !== Number(originalParsed);
+                } else {
+                    changed = String(parsed || '').trim() !== String(originalParsed || '').trim();
+                }
+                if (!changed) { span.textContent = originalText; return; }
+
+                try {
+                    const respGet = await fetch('/productos');
+                    const productos = await respGet.json();
+                    const prod = (productos || []).find(x => String(x.ID) === String(id));
+                    if (!prod) { showToast('Producto no encontrado', 'error'); span.textContent = originalText; return; }
+                    // Asignar campo
+                    prod[field] = parsed;
+                    const resp = await fetch(`/productos/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(prod)
+                    });
+                    if (!resp.ok) {
+                        const e = await resp.json().catch(()=>({}));
+                        throw new Error(e.error || 'No se pudo actualizar');
+                    }
+                    // Renderizar valor
+                    if (field === 'precio_unitario') span.textContent = formatMoney(parsed);
+                    else span.textContent = (type === 'int') ? String(parsed) : (parsed || '');
+                    showToast('Actualizado', 'success');
+                    if (typeof populateProductoSelect === 'function') { populateProductoSelect(); }
+                } catch (e) {
+                    console.error(e);
+                    showToast(e.message || 'Error al actualizar', 'error');
+                    span.textContent = originalText;
+                }
+            };
+
+            input.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') { ev.preventDefault(); commit(true); }
+                if (ev.key === 'Escape') { ev.preventDefault(); commit(false); }
+            });
+            input.addEventListener('blur', () => commit(true));
         });
     });
 }
