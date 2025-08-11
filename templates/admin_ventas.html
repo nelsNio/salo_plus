@@ -23,8 +23,8 @@
         <select id="productoSeleccionado" name="producto_id" required>
             <option value="">Seleccione un producto</option>
         </select>
+        <span id="precioSeleccionado" style="margin-left:8px;color:#555">Precio: $ 0.00</span>
         <input name="cantidad" placeholder="Cantidad" type="number" required>
-        <input name="precio_unitario" placeholder="Precio unitario" type="number" step="0.01" required>
         <input type="date" name="fecha" placeholder="Fecha de Venta" default= date().toISOString()>
         <select name="tipo_pago" id="tipoPago" required>
             <option value="efectivo">Efectivo</option>

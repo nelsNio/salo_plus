@@ -11,15 +11,30 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 func main() {
 
-	// Leer la variable de entorno
-	dsn := "postgres://u3qj45epbhvltf:pddd42837d052b70a9927f5f61b59b26d883dd3ff3b77488792dcc800077d4fa8@cer3tutrbi7n1t.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d943tmcccgq9ki"
-
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	// Config DB: si SQLITE_PATH está definido, usamos SQLite; de lo contrario Postgres (DATABASE_URL o DSN fijo)
+	var db *gorm.DB
+	var err error
+	if sqlitePath := os.Getenv("SQLITE_PATH"); sqlitePath != "" {
+		if sqlitePath == "memory" { // atajo para memoria
+			sqlitePath = ":memory:"
+		}
+		log.Println("Usando SQLite en:", sqlitePath)
+		db, err = gorm.Open(sqlite.Open(sqlitePath), &gorm.Config{})
+	} else {
+		dsn := os.Getenv("DATABASE_URL")
+		if dsn == "" {
+			// DSN por defecto (productivo). Reemplázalo por envs en tu despliegue.
+			dsn = "postgres://u3qj45epbhvltf:pddd42837d052b70a9927f5f61b59b26d883dd3ff3b77488792dcc800077d4fa8@cer3tutrbi7n1t.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d943tmcccgq9ki"
+		}
+		log.Println("Usando Postgres (DATABASE_URL)")
+		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	}
 	if err != nil {
 		log.Fatal("Error conectando a la base de datos:", err)
 	}
@@ -29,20 +44,7 @@ func main() {
 	if err := db.AutoMigrate(&models.Producto{}, &models.Venta{}, &models.Item{}, &models.Counter{}); err != nil {
 		panic(err)
 	}
-	// Asegurar que SKUID pueda ser NULL y limpiar valores 0 que rompen la FK
-	if err := db.Exec(`ALTER TABLE "venta" ALTER COLUMN "sk_uid" DROP NOT NULL`).Error; err != nil {
-		log.Println("Aviso: no se pudo alterar columna venta.sk_uid (puede no existir):", err)
-	}
-	if err := db.Exec(`UPDATE "venta" SET "sk_uid" = NULL WHERE "sk_uid" = 0`).Error; err != nil {
-		log.Println("Aviso: no se pudo limpiar valores 0 en venta.sk_uid:", err)
-	}
-	// Intentar también con sku_id por si la columna tiene este nombre
-	if err := db.Exec(`ALTER TABLE "venta" ALTER COLUMN "sku_id" DROP NOT NULL`).Error; err != nil {
-		log.Println("Aviso: no se pudo alterar columna venta.sku_id (puede no existir):", err)
-	}
-	if err := db.Exec(`UPDATE "venta" SET "sku_id" = NULL WHERE "sku_id" = 0`).Error; err != nil {
-		log.Println("Aviso: no se pudo limpiar valores 0 en venta.sku_id:", err)
-	}
+	// Limpieza: eliminamos manejo legado de SKU/Lote. Si existen columnas antiguas en BD, puedes borrarlas manualmente.
 
 	r := gin.Default()
 
@@ -87,9 +89,8 @@ func main() {
 	r.POST("/ventas/lote", func(c *gin.Context) {
 		// payload esperado
 		type item struct {
-			ProductoID     uint    `json:"producto_id"`
-			Cantidad       int     `json:"cantidad"`
-			PrecioUnitario float64 `json:"precio_unitario"`
+			ProductoID uint `json:"producto_id"`
+			Cantidad   int  `json:"cantidad"`
 		}
 		type payload struct {
 			Fecha    string `json:"fecha"` // ISO opcional
@@ -131,6 +132,7 @@ func main() {
 
 		// Validar stock y calcular total
 		var total float64
+		precios := make(map[uint]float64)
 		for _, it := range in.Items {
 			var p models.Producto
 			if err := tx.First(&p, it.ProductoID).Error; err != nil {
@@ -143,7 +145,8 @@ func main() {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuficiente"})
 				return
 			}
-			total += float64(it.Cantidad) * it.PrecioUnitario
+			precios[it.ProductoID] = p.PrecioUnitario
+			total += float64(it.Cantidad) * p.PrecioUnitario
 		}
 
 		// Construir venta con items
@@ -158,7 +161,7 @@ func main() {
 			venta.Items = append(venta.Items, models.Item{
 				ProductoID:     it.ProductoID,
 				Cantidad:       it.Cantidad,
-				PrecioUnitario: it.PrecioUnitario,
+				PrecioUnitario: precios[it.ProductoID],
 			})
 		}
 
@@ -262,6 +265,7 @@ func main() {
 		p.Laboratorio = in.Laboratorio
 		p.Presentacion = in.Presentacion
 		p.Cantidad = in.Cantidad
+		p.PrecioUnitario = in.PrecioUnitario
 		p.Lote = in.Lote
 		p.RegistroInvima = in.RegistroInvima
 		p.FechaVenc = in.FechaVenc
@@ -315,12 +319,9 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "items vacíos"})
 			return
 		}
-		// Normalizar fecha y SKU
+		// Normalizar fecha
 		if v.Fecha.IsZero() {
 			v.Fecha = time.Now()
-		}
-		if v.SKUID != nil && *v.SKUID == 0 {
-			v.SKUID = nil
 		}
 		// Validar stock por cada item y calcular total
 		var total float64
@@ -341,7 +342,9 @@ func main() {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuficiente"})
 				return
 			}
-			total += float64(v.Items[i].Cantidad) * v.Items[i].PrecioUnitario
+			// Forzar precio desde BD
+			v.Items[i].PrecioUnitario = p.PrecioUnitario
+			total += float64(v.Items[i].Cantidad) * p.PrecioUnitario
 		}
 		v.Total = total
 		// Asignar folio

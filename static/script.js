@@ -17,6 +17,14 @@ function showToast(message, type = 'info') {
         document.body.appendChild(container);
     }
 
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    el.textContent = message;
+    el.addEventListener('click', () => el.remove());
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+}
+
 // Rellenar el select de productos en Admin Ventas (top-level)
 async function populateProductoSelect() {
     const select = document.getElementById('productoSeleccionado');
@@ -25,18 +33,22 @@ async function populateProductoSelect() {
         const res = await fetch('/productos');
         const productos = await res.json();
         select.innerHTML = '<option value="">Seleccione un producto</option>';
+        // Índice rápido por ID para consultar precio al vuelo
+        window.__productosById = Object.create(null);
         (productos || []).forEach(p => {
-            select.innerHTML += `<option value="${p.ID}">${p.nombre} (${p.lote}) - Stock: ${p.cantidad}</option>`;
+            window.__productosById[p.ID] = p;
+            const precio = Number(p.precio_unitario || 0);
+            select.innerHTML += `<option value="${p.ID}" data-precio="${precio}">${p.nombre} (${p.lote}) - $ ${precio.toFixed(2)} - Stock: ${p.cantidad}</option>`;
         });
+        // Mostrar precio inicial si hay selección
+        const spanPrecio = document.getElementById('precioSeleccionado');
+        if (spanPrecio) {
+            const sel = select.value;
+            const item = sel && window.__productosById ? window.__productosById[sel] : null;
+            const precio = item ? Number(item.precio_unitario || 0) : 0;
+            spanPrecio.textContent = `Precio: $ ${precio.toFixed(2)}`;
+        }
     } catch {}
-}
-    
-    const el = document.createElement('div');
-    el.className = `toast toast-${type}`;
-    el.textContent = message;
-    el.addEventListener('click', () => el.remove());
-    container.appendChild(el);
-    setTimeout(() => el.remove(), 3000);
 }
 
 // Impresión del carrito (top-level)
@@ -55,7 +67,8 @@ function openPrintWindowCarrito(items, fechaISO, tipoPago, folioOverride) {
           </tr>`).join('');
         const total = items.reduce((a, b) => a + (b.cantidad * b.precio_unitario), 0);
         const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Comprobante de venta (Carrito)</title>
+<html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="script-src 'none'">
+<title>Comprobante de venta (Carrito)</title>
 ${buildReceiptStyles()}
 </head>
 <body class="pos80">
@@ -163,7 +176,8 @@ function openPrintWindow(venta) {
           </tr>
         `).join('');
         const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Comprobante de venta</title>
+<html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="script-src 'none'">
+<title>Comprobante de venta</title>
 ${buildReceiptStyles()}
 </head>
 <body class="pos80">
@@ -200,53 +214,65 @@ function attachVentaPrintButtons(container, ventas) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Popular select y mostrar precio al seleccionar
+    populateProductoSelect();
+    const selectProd = document.getElementById('productoSeleccionado');
+    if (selectProd) {
+        selectProd.addEventListener('change', () => {
+            const spanPrecio = document.getElementById('precioSeleccionado');
+            const opt = selectProd.options[selectProd.selectedIndex];
+            const precio = opt ? parseFloat(opt.getAttribute('data-precio') || '0') : 0;
+            if (spanPrecio) spanPrecio.textContent = `Precio: $ ${Number(precio).toFixed(2)}`;
+        });
+    }
     // 📌 Registrar venta (con verificación de existencia)
     const formVenta = document.getElementById('formVenta');
+    // Botón imprimir carrito
+    const btnImprimirCarrito = document.getElementById('imprimirCarrito');
+    // Handler del botón "Vender" (submit del formulario) para venta individual
     if (formVenta) {
         formVenta.addEventListener('submit', async function(e) {
             e.preventDefault();
-            const formVals = Object.fromEntries(new FormData(e.target).entries());
-            const cantidad = parseInt(formVals.cantidad || "0");
+            const formVals = Object.fromEntries(new FormData(formVenta).entries());
             const producto_id = parseInt(formVals.producto_id);
-            const precio_unitario = parseFloat(formVals.precio_unitario);
+            const cantidad = parseInt(formVals.cantidad || '0');
             const tipo_pago = (document.getElementById('tipoPago')?.value) || 'efectivo';
-            // Establecer fecha por defecto hoy si está vacía y normalizar a ISO 8601 (preserva hora actual)
+            // Normalizar fecha a ISO
             let fecha = formVals.fecha;
-            if (!fecha || fecha.trim() === "") {
+            if (!fecha || fecha.trim() === '') {
                 fecha = new Date().toISOString();
             } else {
                 const iso = isoFromDateInput(fecha);
                 if (iso) fecha = iso; else fecha = undefined;
             }
+            if (!(producto_id > 0)) { showToast('Seleccione un producto', 'error'); return; }
+            if (!(cantidad > 0)) { showToast('Ingrese cantidad válida', 'error'); return; }
             const payload = {
                 tipo_pago,
                 ...(fecha ? { fecha } : {}),
-                items: [
-                    { producto_id, cantidad, precio_unitario }
-                ]
+                items: [ { producto_id, cantidad } ]
             };
             try {
-                const resp = await fetch("/ventas", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                const resp = await fetch('/ventas', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
                 if (!resp.ok) {
-                    let err = await resp.json().catch(() => ({}));
-                    showToast(err.error || 'No se pudo registrar la venta', 'error');
-                    return;
+                    const err = await resp.json().catch(()=>({}));
+                    throw new Error(err.error || 'No se pudo registrar la venta');
                 }
                 showToast('Venta registrada con éxito', 'success');
-                e.target.reset();
-                cargarProductos();
-                cargarVentas();
-            } catch (error) {
-                showToast('Error de red al registrar la venta', 'error');
+                formVenta.reset();
+                await cargarProductos();
+                await cargarVentas();
+                if (typeof populateProductoSelect === 'function') populateProductoSelect();
+            } catch (err) {
+                console.error(err);
+                showToast(err.message || 'Error al registrar la venta', 'error');
             }
         });
     }
-
-    const btnImprimirCarrito = document.getElementById('imprimirCarrito');
     if (btnImprimirCarrito) {
         btnImprimirCarrito.addEventListener('click', () => {
             if (carrito.length === 0) { showToast('El carrito está vacío', 'error'); return; }
@@ -317,10 +343,12 @@ document.addEventListener('DOMContentLoaded', function() {
         btnAgregar.addEventListener('click', () => {
             const select = document.getElementById('productoSeleccionado');
             const cantidad = parseInt((document.querySelector('#formVenta [name="cantidad"]').value || '0'));
-            const precio = parseFloat((document.querySelector('#formVenta [name="precio_unitario"]').value || '0'));
+            // Precio se toma del producto seleccionado (backend es fuente de verdad)
+            const selectedOption = select ? select.options[select.selectedIndex] : null;
+            const precio = selectedOption ? parseFloat(selectedOption.getAttribute('data-precio') || '0') : 0;
             if (!select || !select.value) { showToast('Seleccione un producto', 'error'); return; }
             if (!(cantidad > 0)) { showToast('Ingrese cantidad válida', 'error'); return; }
-            if (!(precio >= 0)) { showToast('Ingrese precio válido', 'error'); return; }
+            if (!(precio >= 0)) { showToast('Precio inválido', 'error'); return; }
             const option = select.options[select.selectedIndex];
             const nombre = option ? option.textContent : '';
             carrito.push({ producto_id: parseInt(select.value), cantidad, precio_unitario: precio, nombre });
@@ -344,18 +372,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 // snapshot antes de confirmar
                 const itemsSnapshot = carrito.map(x => ({...x}));
                 const resp = await fetch('/ventas/lote', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      fecha: fechaISO,
-                      tipo_pago: (document.getElementById('tipoPago')?.value)||'efectivo',
-                      items: carrito.map((it) => ({
-                        producto_id: it.producto_id,
-                        cantidad: it.cantidad,
-                        precio_unitario: it.precio_unitario
-                      }))
-                    })
-                });
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  fecha: fechaISO,
+                  tipo_pago: (document.getElementById('tipoPago')?.value)||'efectivo',
+                  items: carrito.map((it) => ({
+                    producto_id: it.producto_id,
+                    cantidad: it.cantidad
+                  }))
+                })
+            });
                 if (!resp.ok) {
                     const err = await resp.json().catch(() => ({}));
                     throw new Error(err.error || 'Error al confirmar venta');
@@ -387,12 +414,17 @@ document.addEventListener('DOMContentLoaded', function() {
             let select = document.getElementById("productoSeleccionado");
             if (!select) return;
             select.innerHTML = '<option value="">Seleccione un producto</option>';
+            window.__productosById = Object.create(null);
             productos.forEach(p => {
-                select.innerHTML += `<option value="${p.ID}">${p.nombre} (${p.lote}) - Stock: ${p.cantidad}</option>`;
+                window.__productosById[p.ID] = p;
+                const precio = Number(p.precio_unitario || 0);
+                select.innerHTML += `<option value="${p.ID}" data-precio="${precio}">${p.nombre} (${p.lote}) - $ ${precio.toFixed(2)} - Stock: ${p.cantidad}</option>`;
             });
             // Selecciona automáticamente el primer producto si existe
             if (productos.length > 0) {
                 select.value = productos[0].ID; // corregido: usar ID consistente
+                const spanPrecio = document.getElementById('precioSeleccionado');
+                if (spanPrecio) spanPrecio.textContent = `Precio: $ ${Number(productos[0].precio_unitario||0).toFixed(2)}`;
             }
         });
     }
@@ -491,46 +523,83 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-// Cargas iniciales seguras
-cargarProductos();
-cargarVentas();
+    // Cargas iniciales seguras
+    cargarProductos();
+    cargarVentas();
 });
 
 // 📌 Cargar productos al inicio
-async function cargarProductos(q="") {
-    let url = q ? `/buscar?q=${encodeURIComponent(q)}` : "/productos";
-    let res = await fetch(url);
-    let data = await res.json();
-    let tbody = document.getElementById("tablaProductos");
+async function cargarProductos(q = "") {
+    const url = q ? `/buscar?q=${encodeURIComponent(q)}` : "/productos";
+    const res = await fetch(url);
+    const data = await res.json();
+    const tbody = document.getElementById("tablaProductos");
     if (!tbody) return; // Evitar errores si no existe la tabla en esta página
     tbody.innerHTML = "";
-    data.forEach(p => {
-        tbody.innerHTML += `<tr>
+    (data || []).forEach(p => {
+        tbody.innerHTML += `<tr data-id="${p.ID}">
             <td>${p.fecha_ingreso}</td>
             <td>${p.nombre}</td>
             <td>${p.laboratorio}</td>
             <td>${p.presentacion}</td>
+            <td>${formatMoney(p.precio_unitario)}</td>
             <td>${p.cantidad}</td>
             <td>${p.lote}</td>
             <td>${p.codigo_barras}</td>
             <td>${p.registro_invima}</td>
             <td>${p.fecha_venc}</td>
             <td>${p.observacion}</td>
+            <td><button type="button" class="btn-edit-precio" data-id="${p.ID}" data-precio="${p.precio_unitario}">Editar precio</button></td>
         </tr>`;
+    });
+    // Bind editar precio
+    tbody.querySelectorAll('button.btn-edit-precio').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.getAttribute('data-id');
+            const current = parseFloat(btn.getAttribute('data-precio') || '0');
+            const nuevo = prompt('Nuevo precio unitario:', isNaN(current) ? '' : current.toString());
+            if (nuevo == null) return; // cancel
+            const precio = parseFloat(nuevo);
+            if (isNaN(precio) || precio < 0) { showToast('Precio inválido', 'error'); return; }
+            try {
+                // Obtener producto actual para no pisar campos
+                const respGet = await fetch(`/productos`);
+                const productos = await respGet.json();
+                const prod = (productos || []).find(x => String(x.ID) === String(id));
+                if (!prod) { showToast('Producto no encontrado', 'error'); return; }
+                prod.precio_unitario = precio;
+                const resp = await fetch(`/productos/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(prod)
+                });
+                if (!resp.ok) {
+                    const e = await resp.json().catch(() => ({}));
+                    throw new Error(e.error || 'No se pudo actualizar');
+                }
+                showToast('Precio actualizado', 'success');
+                cargarProductos(q);
+                // Refrescar select de ventas si existe
+                if (typeof populateProductoSelect === 'function') { populateProductoSelect(); }
+            } catch (e) {
+                console.error(e);
+                showToast(e.message || 'Error al actualizar precio', 'error');
+            }
+        });
     });
 }
 
 // 📌 Cargar ventas
 async function cargarVentas() {
-    let res = await fetch("/ventas");
-    let data = await res.json();
-    let ventas = data.ventas;
+    const res = await fetch("/ventas");
+    const data = await res.json();
+    const ventas = data.ventas || [];
     const totalHoyEl = document.getElementById("totalHoy");
     const totalGeneralEl = document.getElementById("totalGeneral");
-    if (totalHoyEl) totalHoyEl.textContent = data.total_hoy.toFixed(2);
-    if (totalGeneralEl) totalGeneralEl.textContent = data.total_general.toFixed(2);
+    if (totalHoyEl) totalHoyEl.textContent = Number(data.total_hoy || 0).toFixed(2);
+    if (totalGeneralEl) totalGeneralEl.textContent = Number(data.total_general || 0).toFixed(2);
 
-    let tbody = document.getElementById("tablaVentas");
+    const tbody = document.getElementById("tablaVentas");
     if (!tbody) return; // Evitar errores si no existe la tabla
     tbody.innerHTML = "";
     ventas.forEach((v, idx) => {
@@ -557,7 +626,6 @@ async function cargarVentas() {
                 ${itemsRows || '<tr><td colspan="4">Sin items</td></tr>'}
             </tbody>
         </table>`;
-        const jsonPretty = (() => { try { return JSON.stringify(v, null, 2); } catch { return ''; } })();
         tbody.innerHTML += `<tr>
             <td>${v.ID ?? ''}</td>
             <td>${formatDateTimeLocal(v.fecha)}</td>
