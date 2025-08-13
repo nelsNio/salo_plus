@@ -40,8 +40,8 @@ func main() {
 	}
 	log.Println("Migración completada correctamente.")
 
-	// migrar modelos (productos/ventas/items/counters)
-	if err := db.AutoMigrate(&models.Producto{}, &models.Venta{}, &models.Item{}, &models.Counter{}); err != nil {
+	// migrar modelos (productos/ventas/items/counters/empaques/producto_empaques)
+	if err := db.AutoMigrate(&models.Producto{}, &models.Venta{}, &models.Item{}, &models.Counter{}, &models.Empaque{}, &models.ProductoEmpaque{}); err != nil {
 		panic(err)
 	}
 	// Limpieza: eliminamos manejo legado de SKU/Lote. Si existen columnas antiguas en BD, puedes borrarlas manualmente.
@@ -89,8 +89,10 @@ func main() {
 	r.POST("/ventas/lote", func(c *gin.Context) {
 		// payload esperado
 		type item struct {
-			ProductoID uint `json:"producto_id"`
-			Cantidad   int  `json:"cantidad"`
+			ProductoID       uint `json:"producto_id"`
+			Cantidad         int  `json:"cantidad"`            // unidades base (si no se usa empaque)
+			EmpaqueID        uint `json:"empaque_id"`         // opcional
+			CantidadEmpaques int  `json:"cantidad_empaques"`  // opcional, usado si EmpaqueID > 0
 		}
 		type payload struct {
 			Fecha    string `json:"fecha"` // ISO opcional
@@ -130,9 +132,10 @@ func main() {
 			return
 		}
 
-		// Validar stock y calcular total
+		// Validar stock y calcular total (con soporte de empaques)
 		var total float64
-		precios := make(map[uint]float64)
+		precios := make(map[uint]float64) // precio unitario efectivo por ProductoID
+		cantidades := make(map[uint]int)   // cantidad en unidades base por ProductoID (sumada por si repite)
 		for _, it := range in.Items {
 			var p models.Producto
 			if err := tx.First(&p, it.ProductoID).Error; err != nil {
@@ -140,13 +143,32 @@ func main() {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Producto no encontrado"})
 				return
 			}
-			if p.Cantidad < it.Cantidad {
+			unidades := it.Cantidad
+			precioUnit := p.PrecioUnitario
+			// Validar empaque si se especifica
+			if it.EmpaqueID > 0 {
+				var em models.Empaque
+				if err := tx.First(&em, it.EmpaqueID).Error; err != nil {
+					tx.Rollback()
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Empaque no encontrado"})
+					return
+				}
+				if em.FactorConversion <= 0 {
+					tx.Rollback()
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Factor de empaque inválido"})
+					return
+				}
+				unidades = it.CantidadEmpaques * em.FactorConversion
+				// El precio se mantiene del producto, ya no hay override por empaque
+			}
+			if p.Cantidad < unidades {
 				tx.Rollback()
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuficiente"})
 				return
 			}
-			precios[it.ProductoID] = p.PrecioUnitario
-			total += float64(it.Cantidad) * p.PrecioUnitario
+			precios[it.ProductoID] = precioUnit
+			cantidades[it.ProductoID] += unidades
+			total += float64(unidades) * precioUnit
 		}
 
 		// Construir venta con items
@@ -156,12 +178,12 @@ func main() {
 			Folio:    folioLote,
 			Total:    total,
 		}
-		venta.Items = make([]models.Item, 0, len(in.Items))
-		for _, it := range in.Items {
+		venta.Items = make([]models.Item, 0, len(cantidades))
+		for pid, unidades := range cantidades {
 			venta.Items = append(venta.Items, models.Item{
-				ProductoID:     it.ProductoID,
-				Cantidad:       it.Cantidad,
-				PrecioUnitario: precios[it.ProductoID],
+				ProductoID:     pid,
+				Cantidad:       unidades,
+				PrecioUnitario: precios[pid],
 			})
 		}
 
@@ -240,7 +262,7 @@ func main() {
 			if page < 1 { page = 1 }
 			if size < 1 { size = 20 }
 			offset := (page - 1) * size
-			if err := db.Order("id desc").Limit(size).Offset(offset).Find(&productos).Error; err != nil {
+			if err := db.Preload("ProductoEmpaques.Empaque").Order("id desc").Limit(size).Offset(offset).Find(&productos).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
@@ -250,26 +272,63 @@ func main() {
 			return
 		}
 		var productos []models.Producto
-		db.Order("id desc").Find(&productos)
+		db.Preload("ProductoEmpaques.Empaque").Order("id desc").Find(&productos)
 		c.JSON(http.StatusOK, productos)
 	})
 
 	// POST /productos
 	r.POST("/productos", func(c *gin.Context) {
-		var p models.Producto
-		if err := c.ShouldBindJSON(&p); err != nil {
+		var requestData struct {
+			models.Producto
+			EmpaquesSeleccionados []struct {
+				ID uint `json:"ID"`
+			} `json:"empaques_seleccionados,omitempty"`
+		}
+		
+		if err := c.ShouldBindJSON(&requestData); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+		
+		// Crear el producto
+		p := requestData.Producto
 		if err := db.Create(&p).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		
+		// Limpiar código de barras vacío
 		if strings.TrimSpace(p.CodigoBarras) == "" {
 			db.Exec("UPDATE productos SET codigo_barras = NULL WHERE id = ?", p.ID)
 			p.CodigoBarras = ""
 		}
+		
+		// Asociar empaques existentes al producto
+		if len(requestData.EmpaquesSeleccionados) > 0 {
+			for _, empaqueRef := range requestData.EmpaquesSeleccionados {
+				// Crear la relación producto-empaque
+				productoEmpaque := models.ProductoEmpaque{
+					ProductoID: p.ID,
+					EmpaqueID:  empaqueRef.ID,
+				}
+				db.Create(&productoEmpaque)
+			}
+		}
+		
+		// Recargar el producto con sus empaques
+		db.Preload("ProductoEmpaques.Empaque").First(&p, p.ID)
+		
 		c.JSON(http.StatusCreated, p)
+	})
+
+	// GET /productos/:id - Obtener un producto específico
+	r.GET("/productos/:id", func(c *gin.Context) {
+		var p models.Producto
+		if err := db.Preload("ProductoEmpaques.Empaque").First(&p, c.Param("id")).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Producto no encontrado"})
+			return
+		}
+		c.JSON(http.StatusOK, p)
 	})
 
 	// PUT /productos/:id
@@ -315,6 +374,143 @@ func main() {
 		c.Status(http.StatusNoContent)
 	})
 
+	// -------------------- Empaques --------------------
+	
+	// Obtener todos los tipos de empaque genéricos
+	r.GET("/empaques", func(c *gin.Context) {
+		var empaques []models.Empaque
+		
+		if err := db.Find(&empaques).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, empaques)
+	})
+
+	// Crear empaque
+	r.POST("/empaques", func(c *gin.Context) {
+		var empaque models.Empaque
+		if err := c.ShouldBindJSON(&empaque); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		
+		if err := db.Create(&empaque).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, empaque)
+	})
+
+	// Obtener empaque por ID
+	r.GET("/empaques/:id", func(c *gin.Context) {
+		id := c.Param("id")
+		var empaque models.Empaque
+		if err := db.First(&empaque, id).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Empaque no encontrado"})
+			return
+		}
+		c.JSON(http.StatusOK, empaque)
+	})
+
+	// Obtener empaques asociados a un producto
+	r.GET("/productos/:id/empaques", func(c *gin.Context) {
+		var productoEmpaques []models.ProductoEmpaque
+		if err := db.Preload("Empaque").Where("producto_id = ?", c.Param("id")).Find(&productoEmpaques).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, productoEmpaques)
+	})
+
+
+
+	// Actualizar empaque
+	r.PUT("/empaques/:id", func(c *gin.Context) {
+		var em models.Empaque
+		if err := db.First(&em, c.Param("id")).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Empaque no encontrado"})
+			return
+		}
+		var in models.Empaque
+		if err := c.ShouldBindJSON(&in); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		em.Tipo = in.Tipo
+		em.FactorConversion = in.FactorConversion
+		em.Descripcion = in.Descripcion
+		if err := db.Save(&em).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, em)
+	})
+
+	// Eliminar empaque
+	r.DELETE("/empaques/:id", func(c *gin.Context) {
+		if err := db.Delete(&models.Empaque{}, c.Param("id")).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	// ===== RUTAS PRODUCTO-EMPAQUE =====
+	
+	// POST /producto-empaques - Crear asociación producto-empaque
+	r.POST("/producto-empaques", func(c *gin.Context) {
+		var pe models.ProductoEmpaque
+		if err := c.ShouldBindJSON(&pe); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Verificar que el producto existe
+		var producto models.Producto
+		if err := db.First(&producto, pe.ProductoID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Producto no encontrado"})
+			return
+		}
+
+		// Verificar que el empaque existe
+		var empaque models.Empaque
+		if err := db.First(&empaque, pe.EmpaqueID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Empaque no encontrado"})
+			return
+		}
+
+		// Verificar que no existe ya la asociación
+		var existing models.ProductoEmpaque
+		if err := db.Where("producto_id = ? AND empaque_id = ?", pe.ProductoID, pe.EmpaqueID).First(&existing).Error; err == nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "Ya existe esta asociación producto-empaque"})
+			return
+		}
+
+		// Crear la asociación
+		if err := db.Create(&pe).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Cargar la asociación completa con relaciones
+		if err := db.Preload("Producto").Preload("Empaque").First(&pe, pe.ID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error cargando asociación creada"})
+			return
+		}
+
+		c.JSON(http.StatusCreated, pe)
+	})
+
+	// DELETE /producto-empaques/:id - Eliminar asociación producto-empaque
+	r.DELETE("/producto-empaques/:id", func(c *gin.Context) {
+		if err := db.Delete(&models.ProductoEmpaque{}, c.Param("id")).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
 	// GET /buscar (paginación opcional)
 	r.GET("/buscar", func(c *gin.Context) {
 		q := c.Query("q")
@@ -338,7 +534,7 @@ func main() {
 			if page < 1 { page = 1 }
 			if size < 1 { size = 20 }
 			offset := (page - 1) * size
-			if err := tx.Order("id desc").Limit(size).Offset(offset).Find(&productos).Error; err != nil {
+			if err := tx.Preload("ProductoEmpaques.Empaque").Order("id desc").Limit(size).Offset(offset).Find(&productos).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
@@ -349,9 +545,9 @@ func main() {
 		}
 		var productos []models.Producto
 		if q == "" {
-			db.Limit(50).Order("id desc").Find(&productos)
+			db.Preload("ProductoEmpaques.Empaque").Limit(50).Order("id desc").Find(&productos)
 		} else {
-			db.Where("nombre LIKE ? OR lote LIKE ? OR registro_invima LIKE ? OR codigo_barras LIKE ?", like, like, like, like).Order("id desc").Find(&productos)
+			db.Preload("ProductoEmpaques.Empaque").Where("nombre LIKE ? OR lote LIKE ? OR registro_invima LIKE ? OR codigo_barras LIKE ?", like, like, like, like).Order("id desc").Find(&productos)
 		}
 		c.JSON(http.StatusOK, productos)
 	})
@@ -469,6 +665,19 @@ func main() {
 			"total_general": totalGeneral,
 			"total_hoy":     totalHoy,
 		})
+	})
+
+
+
+
+
+
+
+
+
+	// Ruta para la página de gestión de empaques
+	r.GET("/admin_empaques", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "admin_empaques.html", nil)
 	})
 
 	// Usar PORT de entorno (Render/Railway/etc.)

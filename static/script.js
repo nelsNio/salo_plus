@@ -8,6 +8,27 @@ const businessInfo = {
   logo: 'logo.jpg'
 };
 
+// Función para determinar color según fecha de vencimiento
+function getExpirationColor(fechaVenc) {
+    if (!fechaVenc || fechaVenc.trim() === '') return '';
+    
+    const today = new Date();
+    const expDate = new Date(fechaVenc);
+    const diffTime = expDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays <= 30) {
+        // Rojo: vencido o vence en 1 mes o menos
+        return 'background-color: #ffebee; color: #c62828; font-weight: bold;';
+    } else if (diffDays <= 90) {
+        // Amarillo: vence en los siguientes 3 meses
+        return 'background-color: #fff8e1; color: #f57f17; font-weight: bold;';
+    } else {
+        // Verde: más de 3 meses
+        return 'background-color: #e8f5e8; color: #2e7d32;';
+    }
+}
+
 // Utilidad simple para notificaciones
 function showToast(message, type = 'info') {
     let container = document.getElementById('toast-container');
@@ -25,20 +46,145 @@ function showToast(message, type = 'info') {
     setTimeout(() => el.remove(), 3000);
 }
 
+// ================== Empaques (ventas) ==================
+async function loadEmpaquesForProduct(productoId) {
+    console.log('🔍 loadEmpaquesForProduct called with productoId:', productoId);
+    const controls = document.getElementById('empaqueControls');
+    const sel = document.getElementById('empaqueSeleccionado');
+    const cantidadInput = document.querySelector('input[name="cantidad"]'); // Campo unificado
+    const precioEmp = document.getElementById('precioPorEmpaque');
+    const stockEmp = document.getElementById('stockEmpaques');
+    if (!sel || !controls || !cantidadInput) {
+        console.log('❌ Elements not found - sel:', !!sel, 'controls:', !!controls, 'cantidadInput:', !!cantidadInput);
+        return;
+    }
+    if (!productoId) {
+        console.log('❌ No productoId provided, hiding controls');
+        controls.style.display = 'none';
+        return;
+    }
+    try {
+        console.log('📡 Fetching empaques for product:', productoId);
+        const res = await fetch(`/productos/${productoId}/empaques`);
+        const productoEmpaques = await res.json();
+        console.log('📦 Received empaques data:', productoEmpaques);
+        window.__empaquesByProd = window.__empaquesByProd || Object.create(null);
+        window.__empaquesByProd[productoId] = Array.isArray(productoEmpaques) ? productoEmpaques : [];
+        // Obtener precio base del producto
+        const prodSelect = document.getElementById('productoSeleccionado');
+        const opt = prodSelect ? prodSelect.options[prodSelect.selectedIndex] : null;
+        const precioBase = opt ? Number(opt.getAttribute('data-precio') || '0') : 0;
+        
+        // Render opciones
+        sel.innerHTML = '';
+        console.log('🔄 Processing', window.__empaquesByProd[productoId].length, 'empaques');
+        
+        // Ordenar empaques por factor de conversión (menor a mayor)
+        const empaquesOrdenados = [...window.__empaquesByProd[productoId]].sort((a, b) => {
+            const factorA = Number((a.empaque || a.Empaque)?.factor_conversion || 0);
+            const factorB = Number((b.empaque || b.Empaque)?.factor_conversion || 0);
+            return factorA - factorB;
+        });
+        
+        for (const pe of empaquesOrdenados) {
+            console.log('📋 Processing ProductoEmpaque:', pe);
+            const empaque = pe.empaque || pe.Empaque;
+            console.log('📦 Empaque data:', empaque);
+            if (!empaque) {
+                console.log('❌ Skipping - no empaque data');
+                continue;
+            }
+            
+            const factor = Number(empaque.factor_conversion || empaque.FactorConversion || 0);
+            const ov = pe.precio_override ?? pe.PrecioOverride;
+            const hasOv = ov != null && ov !== '';
+            const empaqueId = pe.empaque_id || pe.EmpaqueID;
+            const precioEfectivo = hasOv ? Number(ov) : precioBase;
+            const precioTotal = precioEfectivo * factor;
+            
+            // Crear descripción clara con precio
+            const descripcion = empaque.descripcion || `${empaque.tipo} x${factor}`;
+            const precioTexto = `$${precioTotal.toLocaleString()}`;
+            
+            console.log('✅ Adding option:', empaque.tipo, 'factor:', factor, 'precio:', precioTotal);
+            sel.innerHTML += `<option value="${empaqueId}" data-factor="${factor}" data-override="${hasOv ? Number(ov) : ''}" data-pe-id="${pe.ID}">${descripcion} - ${precioTexto}</option>`;
+        }
+        
+        // Siempre mostrar controles si hay empaques disponibles
+        const shouldShow = sel.options.length > 0;
+        controls.style.display = shouldShow ? 'flex' : 'none';
+        
+        // Seleccionar automáticamente la primera opción (unidad mínima)
+        if (shouldShow && sel.options.length > 0) {
+            sel.selectedIndex = 0;
+        }
+        console.log('👁️ Controls display:', shouldShow ? 'SHOWING' : 'HIDING', '- Options count:', sel.options.length);
+        // Reset and compute
+        cantidadInput.value = '1';
+        cantidadInput.placeholder = shouldShow ? 'Cantidad (empaques)' : 'Cantidad (unidades)';
+        computeEmpaqueUI();
+        sel.onchange = computeEmpaqueUI;
+        cantidadInput.oninput = computeEmpaqueUI;
+    } catch (e) {
+        controls.style.display = 'none';
+    }
+    function computeEmpaqueUI() {
+        const prodSelect = document.getElementById('productoSeleccionado');
+        const cantidadInput = document.querySelector('input[name="cantidad"]'); // Reutilizar input existente
+        const opt = prodSelect ? prodSelect.options[prodSelect.selectedIndex] : null;
+        const precioUnit = opt ? Number(opt.getAttribute('data-precio')||'0') : 0;
+        const stockUnidades = (() => {
+            const selId = prodSelect ? prodSelect.value : '';
+            const prod = selId && window.__productosById ? window.__productosById[selId] : null;
+            return prod ? Number(prod.cantidad||0) : 0;
+        })();
+        
+        const emOpt = sel ? sel.options[sel.selectedIndex] : null;
+        if (!emOpt || !emOpt.value) {
+            // Sin empaque seleccionado - venta por unidad
+            if (precioEmp) precioEmp.textContent = `Precio unitario: $ ${precioUnit.toFixed(2)}`;
+            if (stockEmp) stockEmp.textContent = `Stock: ${stockUnidades} unidades`;
+            if (cantidadInput) cantidadInput.placeholder = "Cantidad (unidades)";
+            return;
+        }
+        
+        const factor = Number(emOpt.getAttribute('data-factor')||'0');
+        const override = emOpt.getAttribute('data-override');
+        const unitEff = (override && override !== '') ? Number(override) : precioUnit;
+        const precioPorEmpaque = unitEff * factor;
+        const disponibles = factor > 0 ? Math.floor(stockUnidades / factor) : 0;
+        
+        // Obtener cantidad del campo unificado (ahora representa cantidad de empaques)
+        const cantEmpaques = Number(cantidadInput.value || 1);
+        const precioTotal = cantEmpaques * precioPorEmpaque;
+        
+        // Actualizar UI con información del empaque
+        if (precioEmp) precioEmp.textContent = `Precio por empaque: $ ${precioPorEmpaque.toFixed(2)} | Total: $ ${precioTotal.toFixed(2)}`;
+        if (stockEmp) stockEmp.textContent = `Disponibles: ${disponibles} empaques (${stockUnidades} unidades)`;
+        
+        console.log(`💊 Empaque calculado: ${cantEmpaques} empaques × $${precioPorEmpaque.toFixed(2)} = $${precioTotal.toFixed(2)} | Factor: ${factor}`);
+        
+        // El campo cantidad ahora representa directamente la cantidad de empaques
+        cantidadInput.placeholder = `Cantidad de empaques (factor: ${factor})`;
+        cantidadInput.title = `Cada empaque contiene ${factor} unidades`;
+    }
+}
+
 // Rellenar el select de productos en Admin Ventas (top-level)
 async function populateProductoSelect() {
     const select = document.getElementById('productoSeleccionado');
     if (!select) return;
+    select.innerHTML = '<option value="">Seleccione un producto</option>';
     try {
         const res = await fetch('/productos');
         const productos = await res.json();
-        select.innerHTML = '<option value="">Seleccione un producto</option>';
-        // Índice rápido por ID para consultar precio al vuelo
         window.__productosById = Object.create(null);
-        (productos || []).forEach(p => {
+        productos.forEach(p => {
             window.__productosById[p.ID] = p;
             const precio = Number(p.precio_unitario || 0);
-            select.innerHTML += `<option value="${p.ID}" data-precio="${precio}">${p.nombre} (${p.lote}) - $ ${precio.toFixed(2)} - Stock: ${p.cantidad}</option>`;
+            // Mostrar solo el nombre del producto, sin presentación específica
+            const nombreLimpio = p.nombre.split(' x ')[0] || p.nombre; // Quitar "x 30 TAB" etc.
+            select.innerHTML += `<option value="${p.ID}" data-precio="${precio}">${nombreLimpio}</option>`;
         });
         // Mostrar precio inicial si hay selección
         const spanPrecio = document.getElementById('precioSeleccionado');
@@ -227,6 +373,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const precio = opt ? parseFloat(opt.getAttribute('data-precio') || '0') : 0;
             if (spanPrecio) spanPrecio.textContent = `Precio: $ ${Number(precio).toFixed(2)}`;
             if (inputPrecio) inputPrecio.value = Number(precio).toFixed(2);
+            // Cargar empaques para el producto seleccionado
+            const prodId = opt ? opt.value : '';
+            loadEmpaquesForProduct(prodId);
         });
     }
     // 📌 Registrar venta (con verificación de existencia)
@@ -250,14 +399,31 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (iso) fecha = iso; else fecha = undefined;
             }
             if (!(producto_id > 0)) { showToast('Seleccione un producto', 'error'); return; }
-            if (!(cantidad > 0)) { showToast('Ingrese cantidad válida', 'error'); return; }
-            const payload = {
-                tipo_pago,
-                ...(fecha ? { fecha } : {}),
-                items: [ { producto_id, cantidad } ]
-            };
+            // Si hay empaque seleccionado, usamos /ventas/lote con empaque_id y cantidad_empaques
+            const emSel = document.getElementById('empaqueSeleccionado');
+            const cantEmp = document.getElementById('cantidadEmpaques');
+            const empaque_id = emSel && emSel.value ? parseInt(emSel.value) : 0;
+            const cantidad_empaques = cantEmp ? parseInt(cantEmp.value || '0') : 0;
+            let url = '/ventas';
+            let payload;
+            if (empaque_id > 0) {
+                if (!(cantidad_empaques > 0)) { showToast('Ingrese cantidad de empaques válida', 'error'); return; }
+                url = '/ventas/lote';
+                payload = {
+                    tipo_pago,
+                    ...(fecha ? { fecha } : {}),
+                    items: [ { producto_id, empaque_id, cantidad_empaques } ]
+                };
+            } else {
+                if (!(cantidad > 0)) { showToast('Ingrese cantidad válida', 'error'); return; }
+                payload = {
+                    tipo_pago,
+                    ...(fecha ? { fecha } : {}),
+                    items: [ { producto_id, cantidad } ]
+                };
+            }
             try {
-                const resp = await fetch('/ventas', {
+                const resp = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -346,16 +512,55 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnAgregar) {
         btnAgregar.addEventListener('click', () => {
             const select = document.getElementById('productoSeleccionado');
-            const cantidad = parseInt((document.querySelector('#formVenta [name="cantidad"]').value || '0'));
+            const cantidadUnidades = parseInt((document.querySelector('#formVenta [name="cantidad"]').value || '0'));
             // Precio se toma del producto seleccionado (backend es fuente de verdad)
             const selectedOption = select ? select.options[select.selectedIndex] : null;
             const precio = selectedOption ? parseFloat(selectedOption.getAttribute('data-precio') || '0') : 0;
             if (!select || !select.value) { showToast('Seleccione un producto', 'error'); return; }
-            if (!(cantidad > 0)) { showToast('Ingrese cantidad válida', 'error'); return; }
+            // Revisar si hay empaque
+            const emSel = document.getElementById('empaqueSeleccionado');
+            const empaque_id = emSel && emSel.value ? parseInt(emSel.value) : 0;
+            const emOpt = emSel && emSel.options ? emSel.options[emSel.selectedIndex] : null;
+            const factor = emOpt ? parseInt(emOpt.getAttribute('data-factor') || '0') : 0;
+            const ov = emOpt ? emOpt.getAttribute('data-override') : null;
+            const unitEff = (ov && ov !== '') ? Number(ov) : precio;
+            // Usar el campo unificado - cuando hay empaque, representa cantidad de empaques
+            const cantidadEmpaques = empaque_id > 0 ? cantidadUnidades : 0;
+            let cantidadFinal = cantidadUnidades;
+            let etiqueta = '';
+            let cantidadParaTabla, precioUnitarioParaTabla, cantidadTotalUnidades;
+            
+            if (empaque_id > 0) {
+                if (!(cantidadEmpaques > 0) || !(factor > 0)) { showToast('Complete empaque y cantidad', 'error'); return; }
+                
+                // Para la tabla: mostrar cantidad de empaques y precio por empaque
+                cantidadParaTabla = cantidadEmpaques; // Cantidad de empaques
+                precioUnitarioParaTabla = unitEff * factor; // Precio por empaque
+                cantidadTotalUnidades = cantidadEmpaques * factor; // Total unidades para backend
+                etiqueta = ` (${emOpt.textContent})`;
+                
+                console.log(`🛒 Empaque: ${cantidadEmpaques} empaques × $${precioUnitarioParaTabla} = $${(cantidadParaTabla * precioUnitarioParaTabla).toFixed(2)} | Total unidades: ${cantidadTotalUnidades}`);
+            } else {
+                // Venta por unidades individuales
+                cantidadParaTabla = cantidadUnidades;
+                precioUnitarioParaTabla = unitEff;
+                cantidadTotalUnidades = cantidadUnidades;
+                if (!(cantidadParaTabla > 0)) { showToast('Ingrese cantidad válida', 'error'); return; }
+            }
+            
             if (!(precio >= 0)) { showToast('Precio inválido', 'error'); return; }
             const option = select.options[select.selectedIndex];
             const nombre = option ? option.textContent : '';
-            carrito.push({ producto_id: parseInt(select.value), cantidad, precio_unitario: precio, nombre });
+            
+            carrito.push({ 
+                producto_id: parseInt(select.value), 
+                cantidad: cantidadParaTabla, // Cantidad para mostrar en tabla (empaques o unidades)
+                precio_unitario: precioUnitarioParaTabla, // Precio para mostrar en tabla (por empaque o por unidad)
+                cantidad_total_unidades: cantidadTotalUnidades, // Total unidades para backend
+                empaque_id: empaque_id || null,
+                factor: factor || 1, // Factor de conversión para logs
+                nombre: nombre + etiqueta 
+            });
             renderCarrito();
             showToast('Ítem agregado al carrito', 'success');
         });
@@ -381,10 +586,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({
                   fecha: fechaISO,
                   tipo_pago: (document.getElementById('tipoPago')?.value)||'efectivo',
-                  items: carrito.map((it) => ({
-                    producto_id: it.producto_id,
-                    cantidad: it.cantidad
-                  }))
+                  items: carrito.map((it) => {
+                    // Usar cantidad_total_unidades que ya está calculada correctamente
+                    const cantidadUnidades = it.cantidad_total_unidades || it.cantidad;
+                    
+                    if (it.empaque_id) {
+                      console.log(`📦 Venta por empaque: ${it.cantidad} empaques (factor: ${it.factor}) = ${cantidadUnidades} unidades`);
+                    } else {
+                      console.log(`📦 Venta por unidades: ${cantidadUnidades} unidades`);
+                    }
+                    
+                    return {
+                      producto_id: it.producto_id,
+                      cantidad: cantidadUnidades
+                    };
+                  })
                 })
             });
                 if (!resp.ok) {
@@ -422,16 +638,15 @@ document.addEventListener('DOMContentLoaded', function() {
             productos.forEach(p => {
                 window.__productosById[p.ID] = p;
                 const precio = Number(p.precio_unitario || 0);
-                select.innerHTML += `<option value="${p.ID}" data-precio="${precio}">${p.nombre} (${p.lote}) - $ ${precio.toFixed(2)} - Stock: ${p.cantidad}</option>`;
+                // Mostrar solo el nombre limpio del producto
+                select.innerHTML += `<option value="${p.ID}" data-precio="${precio}">${p.nombre}</option>`;
             });
             // Selecciona automáticamente el primer producto si existe
             if (productos.length > 0) {
-                select.value = productos[0].ID; // corregido: usar ID consistente
-                const spanPrecio = document.getElementById('precioSeleccionado');
-                const inputPrecio = document.getElementById('precio_unitario_vista');
-                const precio0 = Number(productos[0].precio_unitario||0).toFixed(2);
-                if (spanPrecio) spanPrecio.textContent = `Precio: $ ${precio0}`;
-                if (inputPrecio) inputPrecio.value = precio0;
+                select.value = productos[0].ID;
+                // Cargar empaques para el producto seleccionado automáticamente
+                await loadEmpaquesForProduct(productos[0].ID);
+                console.log(`🔍 Auto-selected product: ${productos[0].nombre} (ID: ${productos[0].ID})`);
             }
         });
     }
@@ -448,19 +663,47 @@ document.addEventListener('DOMContentLoaded', function() {
                 showToast('Precio unitario inválido', 'error');
                 return;
             }
-            // Fechas por defecto hoy si vacías (formato YYYY-MM-DD)
+            // Fechas por defecto si están vacías
             const pad = n => String(n).padStart(2, '0');
             const now = new Date();
             const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
             if (!datos.fecha_ingreso || datos.fecha_ingreso.trim() === "") datos.fecha_ingreso = today;
             if (!datos.fecha_venc || datos.fecha_venc.trim() === "") datos.fecha_venc = today;
-            await fetch("/productos", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(datos)
-            });
-            e.target.reset();
-            cargarProductos();
+            
+            try {
+                // Preparar datos con empaques seleccionados
+                const datosCompletos = {
+                    ...datos,
+                    empaques_seleccionados: empaquesSeleccionados.map(emp => ({ ID: emp.ID }))
+                };
+                
+                // Crear producto con empaques asociados
+                const respProducto = await fetch("/productos", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(datosCompletos)
+                });
+                
+                if (!respProducto.ok) {
+                    const error = await respProducto.json();
+                    throw new Error(error.error || 'Error al crear producto');
+                }
+                
+                const producto = await respProducto.json();
+                
+                if (empaquesSeleccionados.length > 0) {
+                    showToast(`Producto creado con ${empaquesSeleccionados.length} empaques asociados`, 'success');
+                } else {
+                    showToast('Producto creado exitosamente', 'success');
+                }
+                
+                e.target.reset();
+                limpiarEmpaques();
+                cargarProductos();
+            } catch (error) {
+                console.error('Error:', error);
+                showToast(error.message || 'Error al crear producto', 'error');
+            }
         });
     }
 
@@ -541,6 +784,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // ================== Configuración de empaques en formulario de productos ==================
+    // Cargar empaques disponibles al cargar la página
+    cargarEmpaquesDisponibles();
+    
+    // Event listener para agregar empaque existente
+    const btnAgregarEmpaqueExistente = document.getElementById('agregarEmpaqueExistente');
+    if (btnAgregarEmpaqueExistente) {
+        btnAgregarEmpaqueExistente.addEventListener('click', agregarEmpaqueExistente);
+    }
+
     // Cargas iniciales seguras
     cargarProductos();
     cargarVentas();
@@ -590,7 +843,41 @@ async function cargarProductos(q = "") {
 
     tbody.innerHTML = "";
     const pageData = (data && Array.isArray(data.items)) ? data.items : (Array.isArray(data) ? data.slice((page-1)*size, (page-1)*size + size) : []);
+    // Mapa de productos por ID para cálculo de stock de empaques
+    window.__productosById = window.__productosById || Object.create(null);
+    for (const p of pageData) {
+        if (p && (p.ID || p.id)) {
+            const id = p.ID || p.id;
+            window.__productosById[id] = p;
+        }
+    }
     pageData.forEach(p => {
+        // Formatear empaques para mostrar con información detallada
+        let empaquesTexto = '-';
+        if (p.producto_empaques && Array.isArray(p.producto_empaques) && p.producto_empaques.length > 0) {
+            const empaquesInfo = p.producto_empaques.map(pe => {
+                const empaque = pe.empaque || pe.Empaque;
+                if (!empaque) return null;
+                
+                const tipo = empaque.tipo || empaque.Tipo;
+                const factor = empaque.factor_conversion || empaque.FactorConversion;
+                const descripcion = empaque.descripcion || empaque.Descripcion;
+                
+                // Calcular precio por empaque
+                const precioBase = Number(p.precio_unitario || 0);
+                const override = pe.precio_override || pe.PrecioOverride;
+                const precioEfectivo = override ? Number(override) : precioBase;
+                const precioEmpaque = precioEfectivo * factor;
+                
+                return `<div style="margin: 1px 0; padding: 2px 4px; background: #f5f5f5; border-radius: 3px; font-size: 11px;">
+                    <strong>${tipo}</strong> x${factor} - $${precioEmpaque.toLocaleString()}
+                    ${descripcion ? `<br><em style="color: #666;">${descripcion}</em>` : ''}
+                </div>`;
+            }).filter(Boolean);
+            
+            empaquesTexto = empaquesInfo.length > 0 ? empaquesInfo.join('') : '-';
+        }
+        
         tbody.innerHTML += `<tr data-id="${p.ID}">
             <td><span class="editable-cell" data-field="fecha_ingreso" data-type="date">${p.fecha_ingreso || ''}</td>
             <td><span class="editable-cell" data-field="nombre" data-type="text">${p.nombre || ''}</td>
@@ -601,8 +888,14 @@ async function cargarProductos(q = "") {
             <td><span class="editable-cell" data-field="lote" data-type="text">${p.lote || ''}</td>
             <td><span class="editable-cell" data-field="codigo_barras" data-type="text">${p.codigo_barras || '-'}</td>
             <td><span class="editable-cell" data-field="registro_invima" data-type="text">${p.registro_invima || ''}</td>
-            <td><span class="editable-cell" data-field="fecha_venc" data-type="date">${p.fecha_venc || ''}</td>
+            <td><span class="editable-cell" data-field="fecha_venc" data-type="date" style="${getExpirationColor(p.fecha_venc)}" title="Click para editar">${p.fecha_venc || ''}</span></td>
             <td><span class="editable-cell" data-field="observacion" data-type="text">${p.observacion || ''}</td>
+            <td style="font-size: 12px; color: #666; max-width: 200px; vertical-align: top;">${empaquesTexto}</td>
+            <td>
+                <button class="btn-gestionar-empaques" onclick="abrirModalEmpaqueProducto(${p.ID})" title="Gestionar empaques del producto">
+                    📦 Empaques
+                </button>
+            </td>
         </tr>`;
     });
 
@@ -749,4 +1042,309 @@ async function cargarVentas() {
         </tr>`;
     });
     attachVentaPrintButtons(tbody, ventas);
+}
+
+// ================== Funciones para gestión de empaques en formulario de productos ==================
+
+// Variables globales para empaques
+let empaquesSeleccionados = [];
+let empaquesDisponibles = [];
+
+// Función para cargar empaques disponibles
+async function cargarEmpaquesDisponibles() {
+    try {
+        const response = await fetch('/empaques?disponibles=true');
+        const empaques = await response.json();
+        empaquesDisponibles = empaques;
+        
+        const select = document.getElementById('empaquesDisponibles');
+        if (!select) {
+            // El elemento no existe en esta página, salir silenciosamente
+            return;
+        }
+        select.innerHTML = '<option value="">Seleccionar empaque...</option>';
+        
+        empaques.forEach(empaque => {
+            const option = document.createElement('option');
+            option.value = empaque.ID;
+            option.textContent = `${empaque.tipo} (x${empaque.factor_conversion})`;
+            option.dataset.empaque = JSON.stringify(empaque);
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error cargando empaques:', error);
+        const select = document.getElementById('empaquesDisponibles');
+        select.innerHTML = '<option value="">Error cargando empaques</option>';
+    }
+}
+
+// Función para agregar empaque existente
+function agregarEmpaqueExistente() {
+    const select = document.getElementById('empaquesDisponibles');
+    const selectedOption = select.options[select.selectedIndex];
+    
+    if (!selectedOption.value) {
+        alert('Por favor selecciona un empaque');
+        return;
+    }
+    
+    const empaqueData = JSON.parse(selectedOption.dataset.empaque);
+    
+    // Verificar si ya está seleccionado
+    if (empaquesSeleccionados.find(e => e.ID === empaqueData.ID)) {
+        alert('Este empaque ya está seleccionado');
+        return;
+    }
+    
+    empaquesSeleccionados.push(empaqueData);
+    actualizarListaEmpaquesSeleccionados();
+    
+    // Resetear select
+    select.selectedIndex = 0;
+}
+
+// Función para actualizar la lista de empaques seleccionados
+function actualizarListaEmpaquesSeleccionados() {
+    const lista = document.getElementById('listaEmpaquesSeleccionados');
+    
+    if (empaquesSeleccionados.length === 0) {
+        lista.innerHTML = '<span class="no-empaques">Sin empaques seleccionados</span>';
+        return;
+    }
+    
+    lista.innerHTML = empaquesSeleccionados.map(empaque => `
+        <span class="empaque-item">
+            ${empaque.tipo} (x${empaque.factor_conversion})
+            <button type="button" onclick="eliminarEmpaqueSeleccionado(${empaque.ID})">×</button>
+        </span>
+    `).join('');
+}
+
+// Función para eliminar empaque seleccionado
+function eliminarEmpaqueSeleccionado(empaqueId) {
+    empaquesSeleccionados = empaquesSeleccionados.filter(e => e.ID !== empaqueId);
+    actualizarListaEmpaquesSeleccionados();
+}
+
+// Recopilar datos de empaques seleccionados
+function recopilarEmpaques() {
+    return empaquesSeleccionados.map(empaque => ({
+        ID: empaque.ID,
+        tipo: empaque.tipo,
+        factor_conversion: empaque.factor_conversion,
+        codigo_barras: empaque.codigo_barras,
+        precio_unit_override: empaque.precio_unit_override
+    }));
+}
+
+// Limpiar formulario de empaques
+function limpiarEmpaques() {
+    empaquesSeleccionados = [];
+    actualizarListaEmpaquesSeleccionados();
+    
+    const select = document.getElementById('empaquesDisponibles');
+    if (select) {
+        select.selectedIndex = 0;
+    }
+}
+
+// ===== GESTIÓN DE EMPAQUES DE PRODUCTO =====
+
+// Abrir modal para gestionar empaques de un producto específico
+async function abrirModalEmpaqueProducto(productoId) {
+    try {
+        // Obtener datos del producto
+        const response = await fetch(`/productos/${productoId}`);
+        if (!response.ok) {
+            throw new Error('Error al cargar producto');
+        }
+        const producto = await response.json();
+        
+        // Llenar información del producto en el modal
+        document.getElementById('productoIdModal').value = productoId;
+        document.getElementById('nombreProductoModal').textContent = producto.nombre;
+        document.getElementById('labProductoModal').textContent = `Lab: ${producto.laboratorio}`;
+        
+        // Cargar empaques genéricos disponibles
+        await cargarEmpaquesGenericos();
+        
+        // Cargar empaques asociados al producto
+        await cargarEmpaquesProducto(productoId);
+        
+        // Configurar event listeners del modal
+        configurarModalEmpaqueProducto();
+        
+        // Mostrar modal
+        document.getElementById('modalEmpaqueProducto').style.display = 'block';
+        
+    } catch (error) {
+        console.error('Error abriendo modal:', error);
+        alert('Error al cargar los datos del producto');
+    }
+}
+
+// Cargar empaques genéricos disponibles para el selector
+async function cargarEmpaquesGenericos() {
+    try {
+        const response = await fetch('/empaques');
+        const empaques = await response.json();
+        
+        const select = document.getElementById('empaqueGenerico');
+        select.innerHTML = '<option value="">Seleccionar empaque genérico...</option>';
+        
+        empaques.forEach(empaque => {
+            const option = document.createElement('option');
+            option.value = empaque.ID;
+            option.textContent = `${empaque.tipo} (${empaque.factor_conversion}x) - ${empaque.descripcion}`;
+            select.appendChild(option);
+        });
+        
+    } catch (error) {
+        console.error('Error cargando empaques genéricos:', error);
+    }
+}
+
+// Cargar empaques asociados a un producto específico
+async function cargarEmpaquesProducto(productoId) {
+    try {
+        const response = await fetch(`/productos/${productoId}/empaques`);
+        const productoEmpaques = await response.json();
+        
+        const tbody = document.getElementById('tablaEmpaquesProductoBody');
+        tbody.innerHTML = '';
+        
+        if (productoEmpaques.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #666;">No hay empaques asociados</td></tr>';
+            return;
+        }
+        
+        productoEmpaques.forEach(pe => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${pe.empaque.tipo}</td>
+                <td>${pe.empaque.factor_conversion}</td>
+                <td>${pe.empaque.descripcion}</td>
+                <td>
+                    <button class="btn-remove-empaque" onclick="desasociarEmpaque(${pe.ID})">
+                        Quitar
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+        
+    } catch (error) {
+        console.error('Error cargando empaques del producto:', error);
+    }
+}
+
+// Asociar empaque genérico a producto
+async function asociarEmpaque(event) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    const productoId = document.getElementById('productoIdModal').value;
+    const empaqueId = document.getElementById('empaqueGenerico').value;
+    
+    if (!empaqueId) {
+        alert('Debe seleccionar un empaque');
+        return;
+    }
+    
+    const data = {
+        producto_id: parseInt(productoId),
+        empaque_id: parseInt(empaqueId),
+        codigo_barras: null,
+        precio_override: null
+    };
+    
+    try {
+        const response = await fetch('/producto-empaques', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Error al asociar empaque');
+        }
+        
+        // Limpiar formulario
+        event.target.reset();
+        document.getElementById('empaqueGenerico').selectedIndex = 0;
+        
+        // Recargar lista de empaques del producto
+        await cargarEmpaquesProducto(productoId);
+        
+        // Recargar tabla principal de productos para mostrar cambios
+        cargarProductos();
+        
+        alert('Empaque asociado exitosamente');
+        
+    } catch (error) {
+        console.error('Error asociando empaque:', error);
+        alert(error.message);
+    }
+}
+
+// Desasociar empaque de producto
+async function desasociarEmpaque(productoEmpaqueId) {
+    if (!confirm('¿Está seguro de que desea quitar este empaque del producto?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/producto-empaques/${productoEmpaqueId}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Error al desasociar empaque');
+        }
+        
+        const productoId = document.getElementById('productoIdModal').value;
+        
+        // Recargar lista de empaques del producto
+        await cargarEmpaquesProducto(productoId);
+        
+        // Recargar tabla principal de productos
+        cargarProductos();
+        
+        alert('Empaque desasociado exitosamente');
+        
+    } catch (error) {
+        console.error('Error desasociando empaque:', error);
+        alert(error.message);
+    }
+}
+
+// Cerrar modal de gestión de empaques
+function cerrarModalEmpaqueProducto() {
+    document.getElementById('modalEmpaqueProducto').style.display = 'none';
+}
+
+// Configurar modal de empaques de producto
+function configurarModalEmpaqueProducto() {
+    const modal = document.getElementById('modalEmpaqueProducto');
+    const closeBtn = modal?.querySelector('.close');
+    
+    if (closeBtn) {
+        closeBtn.addEventListener('click', cerrarModalEmpaqueProducto);
+    }
+    
+    window.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            cerrarModalEmpaqueProducto();
+        }
+    });
+    
+    // Event listener para el formulario de asociar empaque
+    const formAsociar = document.getElementById('formAsociarEmpaque');
+    if (formAsociar) {
+        formAsociar.addEventListener('submit', asociarEmpaque);
+    }
 }

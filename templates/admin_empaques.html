@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Gestión de Empaques - Droguería</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="app-header">
+        <img src="/images/logo.jpg" alt="Logo" class="app-logo">
+        <div class="app-title">
+            <div class="name">Droguería Salo Plus</div>
+            <div class="nit">NIT 1.049.647.310-5</div>
+        </div>
+    </header>
+
+    <nav style="margin: 20px 0;">
+        <a href="/">Volver al Inventario</a>
+        <a href="/admin_ventas">Ir a Ventas</a>
+        <a href="/historial_ventas">Ver Historial de Ventas</a>
+    </nav>
+
+    <h1>Gestión de Empaques</h1>
+    
+    <div class="empaque-section">
+        <h3>Registrar Nuevo Empaque Genérico</h3>
+        <form id="formEmpaque">
+            <div class="form-row">
+                <label for="tipoEmpaque">Tipo de Empaque:</label>
+                <select id="tipoEmpaque" name="tipo" required>
+                    <option value="">Seleccione tipo</option>
+                    <option value="Cápsula">Cápsula</option>
+                    <option value="Tableta">Tableta</option>
+                    <option value="Sobre">Sobre</option>
+                    <option value="Frasco">Frasco</option>
+                    <option value="Caja">Caja</option>
+                    <option value="Tarro">Tarro</option>
+                    <option value="Blister">Blister</option>
+                    <option value="Ampolla">Ampolla</option>
+                    <option value="Tubo">Tubo</option>
+                    <option value="Botella">Botella</option>
+                    <option value="Paquete">Paquete</option>
+                    <option value="Jeringa">Jeringa</option>
+                    <option value="Bolsa">Bolsa</option>
+                    <option value="Sachet">Sachet</option>
+                    <option value="Otro">Otro</option>
+                </select>
+                <input id="tipoPersonalizado" name="tipo_personalizado" placeholder="Especificar tipo..." style="display:none;">
+            </div>
+            
+            <div class="form-row">
+                <label for="factorConversion">Factor de Conversión:</label>
+                <input id="factorConversion" name="factor_conversion" type="number" min="1" step="1" placeholder="Ej: 30 (unidades por empaque)" required>
+                <small>Cantidad de unidades base que contiene este empaque</small>
+            </div>
+            
+            <div class="form-row">
+                <label for="descripcionEmpaque">Descripción:</label>
+                <input id="descripcionEmpaque" name="descripcion" placeholder="Ej: Caja de 30 cápsulas" required>
+                <small>Descripción detallada del empaque</small>
+            </div>
+            
+            <button type="submit">Registrar Empaque</button>
+        </form>
+    </div>
+
+    <div class="empaque-section">
+        <h3>Filtros</h3>
+        <div class="filter-row">
+            <input id="buscarEmpaques" placeholder="Buscar empaques...">
+            <select id="filtroTipo">
+                <option value="">Todos los tipos</option>
+                <option value="Cápsula">Cápsula</option>
+                <option value="Tableta">Tableta</option>
+                <option value="Sobre">Sobre</option>
+                <option value="Frasco">Frasco</option>
+                <option value="Caja">Caja</option>
+                <option value="Tarro">Tarro</option>
+                <option value="Blister">Blister</option>
+                <option value="Ampolla">Ampolla</option>
+                <option value="Tubo">Tubo</option>
+                <option value="Botella">Botella</option>
+                <option value="Paquete">Paquete</option>
+                <option value="Sachet">Sachet</option>
+                <option value="Otro">Otro</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="empaque-section">
+        <h3>Lista de Empaques Genéricos</h3>
+        <table id="tablaEmpaques">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tipo</th>
+                    <th>Factor de Conversión</th>
+                    <th>Descripción</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="tablaEmpaquesBody">
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Modal para editar empaque -->
+    <div id="modalEditarEmpaque" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Editar Empaque Genérico</h3>
+            <form id="formEditarEmpaque">
+                <input type="hidden" id="editEmpaqueId">
+                
+                <div class="form-row">
+                    <label for="editTipoEmpaque">Tipo de Empaque:</label>
+                    <select id="editTipoEmpaque" name="tipo" required>
+                        <option value="Cápsula">Cápsula</option>
+                        <option value="Tableta">Tableta</option>
+                        <option value="Sobre">Sobre</option>
+                        <option value="Frasco">Frasco</option>
+                        <option value="Caja">Caja</option>
+                        <option value="Tarro">Tarro</option>
+                        <option value="Blister">Blister</option>
+                        <option value="Ampolla">Ampolla</option>
+                        <option value="Tubo">Tubo</option>
+                        <option value="Botella">Botella</option>
+                        <option value="Paquete">Paquete</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                
+                <div class="form-row">
+                    <label for="editFactorConversion">Factor de Conversión:</label>
+                    <input id="editFactorConversion" name="factor_conversion" type="number" min="1" step="1" required>
+                </div>
+                
+                <div class="form-row">
+                    <label for="editDescripcionEmpaque">Descripción:</label>
+                    <input id="editDescripcionEmpaque" name="descripcion" required>
+                </div>
+                
+                <div class="form-buttons">
+                    <button type="submit">Actualizar</button>
+                    <button type="button" onclick="cerrarModal()">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/empaque-manager.js"></script>
+</body>
+</html>

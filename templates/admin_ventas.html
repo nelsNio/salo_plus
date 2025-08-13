@@ -16,6 +16,7 @@
    
 
     <a href="/">Volver al Inventario</a>
+    <a href="/admin_empaques">Gestión de Empaques</a>
     <a href="/historial_ventas">Ver Historial de Ventas</a>
 
     <h1>Administración de Ventas</h1>
@@ -27,7 +28,13 @@
         </select>
         <span id="precioSeleccionado" style="margin-left:8px;color:#555">Precio: $ 0.00</span>
         <input id="precio_unitario_vista" type="number" step="0.01" placeholder="Precio" style="width:120px;margin-left:8px" readonly disabled>
-        <input name="cantidad" placeholder="Cantidad" type="number" required>
+        <div id="empaqueControls" style="margin-top:8px; display:none; gap:8px; align-items:center;">
+            <label for="empaqueSeleccionado">Empaque:</label>
+            <select id="empaqueSeleccionado"></select>
+            <span id="precioPorEmpaque" style="color:#555">Precio empaque: $ 0.00</span>
+            <span id="stockEmpaques" style="color:#555"></span>
+        </div>
+        <input name="cantidad" placeholder="Cantidad" type="number" required min="1" step="1">
         <input type="date" name="fecha" placeholder="Fecha de Venta" default= date().toISOString()>
         <select name="tipo_pago" id="tipoPago" required>
             <option value="efectivo">Efectivo</option>
