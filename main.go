@@ -15,6 +15,15 @@ import (
 	"gorm.io/gorm"
 )
 
+// al tope del archivo:
+var bogotaLoc = func() *time.Location {
+	loc, err := time.LoadLocation("America/Bogota")
+	if err != nil {
+		panic(err)
+	}
+	return loc
+}()
+
 func main() {
 
 	// Config DB: si SQLITE_PATH está definido, usamos SQLite; de lo contrario Postgres (DATABASE_URL o DSN fijo)
@@ -90,9 +99,9 @@ func main() {
 		// payload esperado
 		type item struct {
 			ProductoID       uint `json:"producto_id"`
-			Cantidad         int  `json:"cantidad"`            // unidades base (si no se usa empaque)
-			EmpaqueID        uint `json:"empaque_id"`         // opcional
-			CantidadEmpaques int  `json:"cantidad_empaques"`  // opcional, usado si EmpaqueID > 0
+			Cantidad         int  `json:"cantidad"`          // unidades base (si no se usa empaque)
+			EmpaqueID        uint `json:"empaque_id"`        // opcional
+			CantidadEmpaques int  `json:"cantidad_empaques"` // opcional, usado si EmpaqueID > 0
 		}
 		type payload struct {
 			Fecha    string `json:"fecha"` // ISO opcional
@@ -135,7 +144,7 @@ func main() {
 		// Validar stock y calcular total (con soporte de empaques)
 		var total float64
 		precios := make(map[uint]float64) // precio unitario efectivo por ProductoID
-		cantidades := make(map[uint]int)   // cantidad en unidades base por ProductoID (sumada por si repite)
+		cantidades := make(map[uint]int)  // cantidad en unidades base por ProductoID (sumada por si repite)
 		for _, it := range in.Items {
 			var p models.Producto
 			if err := tx.First(&p, it.ProductoID).Error; err != nil {
@@ -259,15 +268,21 @@ func main() {
 			page, size := 1, 20
 			fmt.Sscanf(pageStr, "%d", &page)
 			fmt.Sscanf(sizeStr, "%d", &size)
-			if page < 1 { page = 1 }
-			if size < 1 { size = 20 }
+			if page < 1 {
+				page = 1
+			}
+			if size < 1 {
+				size = 20
+			}
 			offset := (page - 1) * size
 			if err := db.Preload("ProductoEmpaques.Empaque").Order("id desc").Limit(size).Offset(offset).Find(&productos).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
 			pages := 1
-			if size > 0 { pages = int((total + int64(size) - 1) / int64(size)) }
+			if size > 0 {
+				pages = int((total + int64(size) - 1) / int64(size))
+			}
 			c.JSON(http.StatusOK, gin.H{"items": productos, "total": total, "page": page, "pages": pages})
 			return
 		}
@@ -284,25 +299,25 @@ func main() {
 				ID uint `json:"ID"`
 			} `json:"empaques_seleccionados,omitempty"`
 		}
-		
+
 		if err := c.ShouldBindJSON(&requestData); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		
+
 		// Crear el producto
 		p := requestData.Producto
 		if err := db.Create(&p).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		
+
 		// Limpiar código de barras vacío
 		if strings.TrimSpace(p.CodigoBarras) == "" {
 			db.Exec("UPDATE productos SET codigo_barras = NULL WHERE id = ?", p.ID)
 			p.CodigoBarras = ""
 		}
-		
+
 		// Asociar empaques existentes al producto
 		if len(requestData.EmpaquesSeleccionados) > 0 {
 			for _, empaqueRef := range requestData.EmpaquesSeleccionados {
@@ -314,10 +329,10 @@ func main() {
 				db.Create(&productoEmpaque)
 			}
 		}
-		
+
 		// Recargar el producto con sus empaques
 		db.Preload("ProductoEmpaques.Empaque").First(&p, p.ID)
-		
+
 		c.JSON(http.StatusCreated, p)
 	})
 
@@ -353,7 +368,9 @@ func main() {
 		p.RegistroInvima = in.RegistroInvima
 		p.FechaVenc = in.FechaVenc
 		p.Observacion = in.Observacion
-		if strings.TrimSpace(in.CodigoBarras) == "" { in.CodigoBarras = "" }
+		if strings.TrimSpace(in.CodigoBarras) == "" {
+			in.CodigoBarras = ""
+		}
 		p.CodigoBarras = in.CodigoBarras
 		if err := db.Save(&p).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -375,11 +392,11 @@ func main() {
 	})
 
 	// -------------------- Empaques --------------------
-	
+
 	// Obtener todos los tipos de empaque genéricos
 	r.GET("/empaques", func(c *gin.Context) {
 		var empaques []models.Empaque
-		
+
 		if err := db.Find(&empaques).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -394,7 +411,7 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		
+
 		if err := db.Create(&empaque).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -422,8 +439,6 @@ func main() {
 		}
 		c.JSON(http.StatusOK, productoEmpaques)
 	})
-
-
 
 	// Actualizar empaque
 	r.PUT("/empaques/:id", func(c *gin.Context) {
@@ -457,7 +472,7 @@ func main() {
 	})
 
 	// ===== RUTAS PRODUCTO-EMPAQUE =====
-	
+
 	// POST /producto-empaques - Crear asociación producto-empaque
 	r.POST("/producto-empaques", func(c *gin.Context) {
 		var pe models.ProductoEmpaque
@@ -531,15 +546,21 @@ func main() {
 			page, size := 1, 20
 			fmt.Sscanf(pageStr, "%d", &page)
 			fmt.Sscanf(sizeStr, "%d", &size)
-			if page < 1 { page = 1 }
-			if size < 1 { size = 20 }
+			if page < 1 {
+				page = 1
+			}
+			if size < 1 {
+				size = 20
+			}
 			offset := (page - 1) * size
 			if err := tx.Preload("ProductoEmpaques.Empaque").Order("id desc").Limit(size).Offset(offset).Find(&productos).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
 			pages := 1
-			if size > 0 { pages = int((total + int64(size) - 1) / int64(size)) }
+			if size > 0 {
+				pages = int((total + int64(size) - 1) / int64(size))
+			}
 			c.JSON(http.StatusOK, gin.H{"items": productos, "total": total, "page": page, "pages": pages})
 			return
 		}
@@ -627,21 +648,48 @@ func main() {
 
 	// listar ventas con filtros y totales (solo Producto)
 	r.GET("/ventas", func(c *gin.Context) {
-		desde := c.Query("desde") // YYYY-MM-DD
-		hasta := c.Query("hasta") // YYYY-MM-DD
+		desde := c.Query("desde") // YYYY-MM-DD (interpretada como BOGOTÁ)
+		hasta := c.Query("hasta") // YYYY-MM-DD (interpretada como BOGOTÁ)
+
+		// Construimos rangos en UTC a partir de fechas LOCALES de Bogotá
+		var startUTC, endUTC *time.Time
+
+		// helper para día local -> [inicioUTC, finUTC)
+		parseDayRangeUTC := func(dayStr string) (time.Time, time.Time, error) {
+			// Interpretar el string como fecha local en Bogotá
+			dLocal, err := time.ParseInLocation("2006-01-02", dayStr, bogotaLoc)
+			if err != nil {
+				return time.Time{}, time.Time{}, err
+			}
+			startLocal := time.Date(dLocal.Year(), dLocal.Month(), dLocal.Day(), 0, 0, 0, 0, bogotaLoc)
+			endLocal := startLocal.Add(24 * time.Hour)
+			return startLocal.UTC(), endLocal.UTC(), nil
+		}
 
 		var ventas []models.Venta
 		query := db.Preload("Items").Preload("Items.Producto").Order("fecha desc")
 
-		if desde != "" {
-			if d, err := time.Parse("2006-01-02", desde); err == nil {
-				query = query.Where("fecha >= ?", d)
+		if desde != "" && hasta != "" {
+			sUTC, _, err1 := parseDayRangeUTC(desde)
+			_, hEndUTC, err2 := parseDayRangeUTC(hasta)
+			if err1 == nil && err2 == nil {
+				// si dan un 'hasta' de día completo, usamos su fin exclusivo
+				startUTC = &sUTC
+				endUTC = &hEndUTC
+				query = query.Where("fecha >= ? AND fecha < ?", *startUTC, *endUTC)
 			}
-		}
-		if hasta != "" {
-			if h, err := time.Parse("2006-01-02", hasta); err == nil {
-				h = h.Add(24*time.Hour - time.Second)
-				query = query.Where("fecha <= ?", h)
+		} else if desde != "" {
+			sUTC, _, err := parseDayRangeUTC(desde)
+			if err == nil {
+				startUTC = &sUTC
+				query = query.Where("fecha >= ?", *startUTC)
+			}
+		} else if hasta != "" {
+			// si solo viene hasta, interpretamos día completo y usamos su fin exclusivo
+			_, eUTC, err := parseDayRangeUTC(hasta)
+			if err == nil {
+				endUTC = &eUTC
+				query = query.Where("fecha < ?", *endUTC)
 			}
 		}
 
@@ -650,30 +698,24 @@ func main() {
 			return
 		}
 
+		// Totales
 		var totalGeneral float64
 		var totalHoy float64
-		hoyStr := time.Now().Format("2006-01-02")
+
+		hoyLocal := time.Now().In(bogotaLoc).Format("2006-01-02")
 		for _, v := range ventas {
 			totalGeneral += v.Total
-			if v.Fecha.Format("2006-01-02") == hoyStr {
+			// v.Fecha se guarda en UTC; conviértela a Bogotá para comparar el día local
+			if v.Fecha.In(bogotaLoc).Format("2006-01-02") == hoyLocal {
 				totalHoy += v.Total
 			}
 		}
-
 		c.JSON(http.StatusOK, gin.H{
 			"ventas":        ventas,
 			"total_general": totalGeneral,
 			"total_hoy":     totalHoy,
 		})
 	})
-
-
-
-
-
-
-
-
 
 	// Ruta para la página de gestión de empaques
 	r.GET("/admin_empaques", func(c *gin.Context) {
