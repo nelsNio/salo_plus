@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"salo_plus/models"
+	"strconv"
 	"strings"
 	"time"
 
@@ -172,7 +173,7 @@ func main() {
 			}
 			if p.Cantidad < unidades {
 				tx.Rollback()
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuficiente"})
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuficiente para " + strconv.Itoa(unidades) + " unidades: " + p.Nombre + " (" + strconv.Itoa(p.Cantidad) + " disponibles)"})
 				return
 			}
 			precios[it.ProductoID] = precioUnit
@@ -602,7 +603,7 @@ func main() {
 			}
 			if p.Cantidad < v.Items[i].Cantidad {
 				tx.Rollback()
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuficiente"})
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuficiente para el producto: " + p.Nombre + " (" + p.Lote + ")" + " (" + p.RegistroInvima + ")" + " (" + p.CodigoBarras + ")"})
 				return
 			}
 			v.Items[i].PrecioUnitario = p.PrecioUnitario
