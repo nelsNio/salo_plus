@@ -652,6 +652,14 @@ func main() {
 		desde := c.Query("desde") // YYYY-MM-DD (interpretada como BOGOTÁ)
 		hasta := c.Query("hasta") // YYYY-MM-DD (interpretada como BOGOTÁ)
 
+		// Por defecto, si no vienen filtros, mostrar solo el día actual en Bogotá.
+		// Esto evita traer todo el historial en cada carga inicial.
+		if desde == "" && hasta == "" {
+			hoy := time.Now().In(bogotaLoc).Format("2006-01-02")
+			desde = hoy
+			hasta = hoy
+		}
+
 		// Construimos rangos en UTC a partir de fechas LOCALES de Bogotá
 		var startUTC, endUTC *time.Time
 
