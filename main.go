@@ -711,10 +711,15 @@ func main() {
 			return
 		}
 
-		// total_general: SUM directo en la BD sobre el rango filtrado
-		// Evita iterar todos los registros en Go solo para sumar
+		// total_general: acumulado histórico completo, sin ningún filtro de fecha
 		var totalGeneral float64
-		sumaBase.Select("COALESCE(SUM(total), 0)").Scan(&totalGeneral)
+		db.Model(&models.Venta{}).
+			Select("COALESCE(SUM(total), 0)").
+			Scan(&totalGeneral)
+
+		// total_filtrado: suma solo del rango consultado (lo que se ve en pantalla)
+		var totalFiltrado float64
+		sumaBase.Select("COALESCE(SUM(total), 0)").Scan(&totalFiltrado)
 
 		// total_hoy: SUM directo en la BD solo para el día de hoy en Bogotá
 		var totalHoy float64
@@ -727,9 +732,10 @@ func main() {
 			Scan(&totalHoy)
 
 		c.JSON(http.StatusOK, gin.H{
-			"ventas":        ventas,
-			"total_general": totalGeneral,
-			"total_hoy":     totalHoy,
+			"ventas":         ventas,
+			"total_general":  totalGeneral,  // acumulado histórico completo
+			"total_filtrado": totalFiltrado, // suma del rango visible en pantalla
+			"total_hoy":      totalHoy,
 		})
 	})
 
