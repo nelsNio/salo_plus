@@ -670,27 +670,31 @@ func main() {
 		var ventas []models.Venta
 		query := db.Preload("Items").Preload("Items.Producto").Order("fecha desc")
 
+		// Base query para los SUM (sin Preload, solo filtros de fecha)
+		sumaBase := db.Model(&models.Venta{})
+
 		if desde != "" && hasta != "" {
 			sUTC, _, err1 := parseDayRangeUTC(desde)
 			_, hEndUTC, err2 := parseDayRangeUTC(hasta)
 			if err1 == nil && err2 == nil {
-				// si dan un 'hasta' de día completo, usamos su fin exclusivo
 				startUTC = &sUTC
 				endUTC = &hEndUTC
 				query = query.Where("fecha >= ? AND fecha < ?", *startUTC, *endUTC)
+				sumaBase = sumaBase.Where("fecha >= ? AND fecha < ?", *startUTC, *endUTC)
 			}
 		} else if desde != "" {
 			sUTC, _, err := parseDayRangeUTC(desde)
 			if err == nil {
 				startUTC = &sUTC
 				query = query.Where("fecha >= ?", *startUTC)
+				sumaBase = sumaBase.Where("fecha >= ?", *startUTC)
 			}
 		} else if hasta != "" {
-			// si solo viene hasta, interpretamos día completo y usamos su fin exclusivo
 			_, eUTC, err := parseDayRangeUTC(hasta)
 			if err == nil {
 				endUTC = &eUTC
 				query = query.Where("fecha < ?", *endUTC)
+				sumaBase = sumaBase.Where("fecha < ?", *endUTC)
 			}
 		}
 
@@ -699,18 +703,21 @@ func main() {
 			return
 		}
 
-		// Totales
+		// total_general: SUM directo en la BD sobre el rango filtrado
+		// Evita iterar todos los registros en Go solo para sumar
 		var totalGeneral float64
-		var totalHoy float64
+		sumaBase.Select("COALESCE(SUM(total), 0)").Scan(&totalGeneral)
 
-		hoyLocal := time.Now().In(bogotaLoc).Format("2006-01-02")
-		for _, v := range ventas {
-			totalGeneral += v.Total
-			// v.Fecha se guarda en UTC; conviértela a Bogotá para comparar el día local
-			if v.Fecha.In(bogotaLoc).Format("2006-01-02") == hoyLocal {
-				totalHoy += v.Total
-			}
-		}
+		// total_hoy: SUM directo en la BD solo para el día de hoy en Bogotá
+		var totalHoy float64
+		hoyLocal := time.Now().In(bogotaLoc)
+		hoyStartUTC := time.Date(hoyLocal.Year(), hoyLocal.Month(), hoyLocal.Day(), 0, 0, 0, 0, bogotaLoc).UTC()
+		hoyEndUTC := hoyStartUTC.Add(24 * time.Hour)
+		db.Model(&models.Venta{}).
+			Select("COALESCE(SUM(total), 0)").
+			Where("fecha >= ? AND fecha < ?", hoyStartUTC, hoyEndUTC).
+			Scan(&totalHoy)
+
 		c.JSON(http.StatusOK, gin.H{
 			"ventas":        ventas,
 			"total_general": totalGeneral,
