@@ -2,7 +2,7 @@
 const businessInfo = {
   nombre: 'Droguería Salo Plus',
   nit: 'NIT 1.049.647.310-5',
-  direccion: 'Calle 8 # 6 - 61 Local 1, Belén - Boyacá',
+  direccion: 'Cra 9 # 24-70 Las Nieves, Tunja - Boyacá',
   telefono: '+57 321 934 9781',
   // Opcional: nombre de archivo del logo dentro de /images (por ejemplo 'logo.png')
   logo: 'logo.jpg'
