@@ -199,10 +199,8 @@ function openPrintWindowCarrito(items, fechaISO, tipoPago, folioOverride) {
         const rows = items.map(it => `
           <div class="item">
             <div class="item-nombre">${it.nombre ?? ''}</div>
-            <div class="item-detalle">
-              <span class="cant-precio">${it.cantidad} × $${formatMoney(it.precio_unitario)}</span>
-              <span class="subtotal">$${formatMoney(it.cantidad * it.precio_unitario)}</span>
-            </div>
+            <div class="item-cant">${it.cantidad} x $${formatMoney(it.precio_unitario)}</div>
+            <div class="item-sub">= $${formatMoney(it.cantidad * it.precio_unitario)}</div>
           </div>`).join('');
         const total = items.reduce((a, b) => a + (b.cantidad * b.precio_unitario), 0);
         const html = `<!doctype html>
@@ -212,11 +210,11 @@ ${buildReceiptStyles()}
 </head>
 <body>
   ${buildReceiptHeader('Comprobante de venta (Carrito)', fecha)}
-  <div class="small" style="text-align:right;margin-top:4px">Folio: ${folio}</div>
-  <div class="small" style="margin-top:4px">Pago: ${tipoPago || 'efectivo'}</div>
-  <div class="item-header"><span>Producto</span><span>Subtotal</span></div>
+  <div class="small" style="margin-top:4px">Folio: ${folio}</div>
+  <div class="small" style="margin-top:2px">Pago: ${tipoPago || 'efectivo'}</div>
+  <hr class="sep">
   ${rows}
-  <div class="tot">TOTAL: $ ${formatMoney(total)}</div>
+  <div class="tot">TOTAL: $${formatMoney(total)}</div>
   <button onclick="window.print()">Imprimir</button>
 </body></html>`;
         w.document.open();
@@ -255,10 +253,10 @@ function formatMoney(n) {
 
 function buildReceiptHeader(title, fecha) {
     const logoHtml = businessInfo.logo
-        ? `<div style="margin-bottom:3px;text-align:center"><img src="/images/${businessInfo.logo}" alt="logo" style="max-height:45px;max-width:100%"/></div>`
+        ? `<div style="margin-bottom:3px"><img src="/images/${businessInfo.logo}" alt="logo" style="max-height:45px;max-width:80%"/></div>`
         : '';
     return `
-  <div style="text-align:center;word-break:break-word;overflow-wrap:break-word">
+  <div style="text-align:left;word-break:break-word;overflow-wrap:break-word">
     ${logoHtml}
     <div style="font-size:10px;font-weight:bold;color:#000">${businessInfo.nombre}</div>
     <div style="font-size:8px;color:#000">${businessInfo.nit}</div>
@@ -274,16 +272,17 @@ function buildReceiptStyles() {
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 100% !important; max-width: 100% !important; overflow-x: hidden !important; }
-  body { font-family: Arial, sans-serif; padding: 3mm; font-size: 8px; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: Arial, sans-serif; padding: 2mm; font-size: 8px; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .item { border-bottom: 1px dashed #888; padding: 2px 0; word-break: break-word; overflow-wrap: break-word; }
   .item-nombre { font-size: 8px; font-weight: bold; color: #000 !important; }
-  .item-detalle { display: flex; justify-content: space-between; font-size: 8px; margin-top: 1px; color: #000 !important; }
-  .item-header { font-size: 7px; font-weight: bold; color: #000 !important; border-bottom: 1px solid #000; padding-bottom: 2px; margin: 3px 0 2px; display: flex; justify-content: space-between; }
-  .tot { text-align: right; font-weight: bold; font-size: 10px; margin-top: 4px; border-top: 2px solid #000; padding-top: 3px; color: #000 !important; }
+  .item-cant  { font-size: 8px; color: #000 !important; }
+  .item-sub   { font-size: 8px; font-weight: bold; color: #000 !important; }
+  .sep { border: none; border-top: 1px solid #000; margin: 3px 0; }
+  .tot { font-weight: bold; font-size: 10px; margin-top: 4px; border-top: 2px solid #000; padding-top: 3px; color: #000 !important; }
   .small { font-size: 8px; color: #000 !important; }
   @media print { button { display: none !important; } }
   @page { size: 58mm auto; margin: 0; }
-  @media print { body { padding: 2mm 3mm !important; } }
+  @media print { body { padding: 2mm !important; } }
 </style>`;
 }
 
@@ -303,10 +302,8 @@ function openPrintWindow(venta) {
         const rows = items.map(it => `
           <div class="item">
             <div class="item-nombre">${it.producto?.nombre ?? ''}</div>
-            <div class="item-detalle">
-              <span class="cant-precio">${it.cantidad ?? ''} × $${formatMoney(it.precio_unitario ?? 0)}</span>
-              <span class="subtotal">$${formatMoney((it.cantidad||0) * (it.precio_unitario||0))}</span>
-            </div>
+            <div class="item-cant">${it.cantidad ?? ''} x $${formatMoney(it.precio_unitario ?? 0)}</div>
+            <div class="item-sub">= $${formatMoney((it.cantidad||0) * (it.precio_unitario||0))}</div>
           </div>`).join('');
         const html = `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=160"><meta http-equiv="Content-Security-Policy" content="script-src 'none'">
@@ -315,11 +312,11 @@ ${buildReceiptStyles()}
 </head>
 <body>
   ${buildReceiptHeader('Comprobante de venta', fecha)}
-  <div class="small" style="text-align:right;margin-top:4px">Folio: ${folio}</div>
-  <div class="small" style="margin-top:4px">Pago: ${venta.tipo_pago || 'efectivo'}</div>
-  <div class="item-header"><span>Producto</span><span>Subtotal</span></div>
+  <div class="small" style="margin-top:4px">Folio: ${folio}</div>
+  <div class="small" style="margin-top:2px">Pago: ${venta.tipo_pago || 'efectivo'}</div>
+  <hr class="sep">
   ${rows || ''}
-  <div class="tot">TOTAL: $ ${formatMoney(computedTotal)}</div>
+  <div class="tot">TOTAL: $${formatMoney(computedTotal)}</div>
   <button onclick="window.print()">Imprimir</button>
   <button onclick="window.close()">Cerrar</button>
 </body></html>`;
