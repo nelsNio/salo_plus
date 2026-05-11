@@ -626,6 +626,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // 🔍 Buscar productos mientras se escribe (con verificación de existencia)
     const buscarProductoVenta = document.getElementById("buscarProductoVenta");
     if (buscarProductoVenta) {
+      // Evitar que el Enter del lector de barras dispare el submit del formulario
+        buscarProductoVenta.addEventListener("keydown", function(e) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        });
         buscarProductoVenta.addEventListener("input", async e => {
             let q = e.target.value;
             if (q.length < 2) return;
