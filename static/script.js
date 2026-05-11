@@ -206,7 +206,7 @@ function openPrintWindowCarrito(items, fechaISO, tipoPago, folioOverride) {
           </div>`).join('');
         const total = items.reduce((a, b) => a + (b.cantidad * b.precio_unitario), 0);
         const html = `<!doctype html>
-<html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="script-src 'none'">
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=160"><meta http-equiv="Content-Security-Policy" content="script-src 'none'">
 <title>Comprobante de venta (Carrito)</title>
 ${buildReceiptStyles()}
 </head>
@@ -255,36 +255,35 @@ function formatMoney(n) {
 
 function buildReceiptHeader(title, fecha) {
     const logoHtml = businessInfo.logo
-        ? `<div style="margin-bottom:4px"><img src="/images/${businessInfo.logo}" alt="logo" style="max-height:60px;max-width:48mm"/></div>`
+        ? `<div style="margin-bottom:3px;text-align:center"><img src="/images/${businessInfo.logo}" alt="logo" style="max-height:45px;max-width:100%"/></div>`
         : '';
     return `
-  <div style="text-align:center">
+  <div style="text-align:center;word-break:break-word;overflow-wrap:break-word">
     ${logoHtml}
-    <div style="font-size:13px;font-weight:bold;color:#000">${businessInfo.nombre}</div>
-    <div style="font-size:9px;color:#222">${businessInfo.nit}</div>
-    <div style="font-size:9px;color:#222">${businessInfo.direccion}</div>
-    <div style="font-size:9px;color:#222">${businessInfo.telefono}</div>
-    <div style="margin-top:4px;font-size:10px;font-weight:bold;color:#000">${title}</div>
-    <div class="small">Fecha: ${fecha}</div>
+    <div style="font-size:10px;font-weight:bold;color:#000">${businessInfo.nombre}</div>
+    <div style="font-size:8px;color:#000">${businessInfo.nit}</div>
+    <div style="font-size:8px;color:#000">${businessInfo.direccion}</div>
+    <div style="font-size:8px;color:#000">${businessInfo.telefono}</div>
+    <div style="margin-top:3px;font-size:8px;font-weight:bold;color:#000">${title}</div>
+    <div style="font-size:8px;color:#000">Fecha: ${fecha}</div>
   </div>`;
 }
 
 function buildReceiptStyles() {
     return `
 <style>
-  * { box-sizing: border-box; }
-  body { font-family: Arial, sans-serif; padding: 4px; font-size: 10px; color: #000; width: 100%; }
-  .item { border-bottom: 1px dashed #999; padding: 3px 0; }
-  .item-nombre { font-size: 9px; color: #000; word-break: break-word; }
-  .item-detalle { display: flex; justify-content: space-between; font-size: 9px; margin-top: 1px; }
-  .item-detalle .cant-precio { color: #444; }
-  .item-detalle .subtotal { font-weight: bold; color: #000; }
-  .item-header { font-size: 8px; color: #666; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 2px; display: flex; justify-content: space-between; }
-  .tot { text-align: right; font-weight: bold; font-size: 12px; margin-top: 6px; border-top: 2px solid #000; padding-top: 4px; color: #000; }
-  .small { color: #222; font-size: 9px; }
-  @media print { button { display: none; } }
-  @page { size: 54mm auto; margin: 2mm 3mm; }
-  @media print { body { margin: 0; width: 100%; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100% !important; max-width: 100% !important; overflow-x: hidden !important; }
+  body { font-family: Arial, sans-serif; padding: 3mm; font-size: 8px; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .item { border-bottom: 1px dashed #888; padding: 2px 0; word-break: break-word; overflow-wrap: break-word; }
+  .item-nombre { font-size: 8px; font-weight: bold; color: #000 !important; }
+  .item-detalle { display: flex; justify-content: space-between; font-size: 8px; margin-top: 1px; color: #000 !important; }
+  .item-header { font-size: 7px; font-weight: bold; color: #000 !important; border-bottom: 1px solid #000; padding-bottom: 2px; margin: 3px 0 2px; display: flex; justify-content: space-between; }
+  .tot { text-align: right; font-weight: bold; font-size: 10px; margin-top: 4px; border-top: 2px solid #000; padding-top: 3px; color: #000 !important; }
+  .small { font-size: 8px; color: #000 !important; }
+  @media print { button { display: none !important; } }
+  @page { size: 58mm auto; margin: 0; }
+  @media print { body { padding: 2mm 3mm !important; } }
 </style>`;
 }
 
@@ -310,7 +309,7 @@ function openPrintWindow(venta) {
             </div>
           </div>`).join('');
         const html = `<!doctype html>
-<html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="script-src 'none'">
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=160"><meta http-equiv="Content-Security-Policy" content="script-src 'none'">
 <title>Comprobante de venta</title>
 ${buildReceiptStyles()}
 </head>
