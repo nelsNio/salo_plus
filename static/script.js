@@ -48,7 +48,7 @@ async function loadEmpaquesForProduct(productoId) {
     console.log('🔍 loadEmpaquesForProduct called with productoId:', productoId);
     const controls = document.getElementById('empaqueControls');
     const sel = document.getElementById('empaqueSeleccionado');
-    const cantidadInput = document.querySelector('input[name="cantidad"]');
+    const cantidadInput = document.querySelector('input[name="cantidad"]'); // Campo unificado
     const precioEmp = document.getElementById('precioPorEmpaque');
     const stockEmp = document.getElementById('stockEmpaques');
     if (!sel || !controls || !cantidadInput) {
@@ -67,13 +67,16 @@ async function loadEmpaquesForProduct(productoId) {
         console.log('📦 Received empaques data:', productoEmpaques);
         window.__empaquesByProd = window.__empaquesByProd || Object.create(null);
         window.__empaquesByProd[productoId] = Array.isArray(productoEmpaques) ? productoEmpaques : [];
+        // Obtener precio base del producto
         const prodSelect = document.getElementById('productoSeleccionado');
         const opt = prodSelect ? prodSelect.options[prodSelect.selectedIndex] : null;
         const precioBase = opt ? Number(opt.getAttribute('data-precio') || '0') : 0;
 
+        // Render opciones
         sel.innerHTML = '';
         console.log('🔄 Processing', window.__empaquesByProd[productoId].length, 'empaques');
 
+        // Ordenar empaques por factor de conversión (menor a mayor)
         const empaquesOrdenados = [...window.__empaquesByProd[productoId]].sort((a, b) => {
             const factorA = Number((a.empaque || a.Empaque)?.factor_conversion || 0);
             const factorB = Number((b.empaque || b.Empaque)?.factor_conversion || 0);
@@ -103,13 +106,16 @@ async function loadEmpaquesForProduct(productoId) {
             sel.innerHTML += `<option value="${empaqueId}" data-factor="${factor}" data-override="${hasOv ? Number(ov) : ''}" data-pe-id="${pe.ID}">${descripcion} - ${precioTexto}</option>`;
         }
 
+        // Siempre mostrar controles si hay empaques disponibles
         const shouldShow = sel.options.length > 0;
         controls.style.display = shouldShow ? 'flex' : 'none';
 
+        // Seleccionar automáticamente la primera opción (unidad mínima)
         if (shouldShow && sel.options.length > 0) {
             sel.selectedIndex = 0;
         }
         console.log('👁️ Controls display:', shouldShow ? 'SHOWING' : 'HIDING', '- Options count:', sel.options.length);
+        // Reset and compute
         cantidadInput.value = '1';
         cantidadInput.placeholder = shouldShow ? 'Cantidad (empaques)' : 'Cantidad (unidades)';
         computeEmpaqueUI();
@@ -191,28 +197,25 @@ function openPrintWindowCarrito(items, fechaISO, tipoPago, folioOverride) {
         const fecha = formatDateTimeLocal(fechaISO || new Date().toISOString());
         const folio = folioOverride ? String(folioOverride) : `C-${Date.now()}`;
         const rows = items.map(it => `
-          <tr>
-            <td>${it.nombre ?? ''}</td>
-            <td>${it.cantidad}</td>
-            <td>${formatMoney(it.precio_unitario)}</td>
-            <td>${formatMoney(it.cantidad * it.precio_unitario)}</td>
-          </tr>`).join('');
+          <div class="item">
+            <div class="item-nombre">${it.nombre ?? ''}</div>
+            <div class="item-detalle">
+              <span class="cant-precio">${it.cantidad} × $${formatMoney(it.precio_unitario)}</span>
+              <span class="subtotal">$${formatMoney(it.cantidad * it.precio_unitario)}</span>
+            </div>
+          </div>`).join('');
         const total = items.reduce((a, b) => a + (b.cantidad * b.precio_unitario), 0);
         const html = `<!doctype html>
 <html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="script-src 'none'">
 <title>Comprobante de venta (Carrito)</title>
 ${buildReceiptStyles()}
 </head>
-<body class="pos80">
+<body>
   ${buildReceiptHeader('Comprobante de venta (Carrito)', fecha)}
   <div class="small" style="text-align:right;margin-top:4px">Folio: ${folio}</div>
   <div class="small" style="margin-top:4px">Pago: ${tipoPago || 'efectivo'}</div>
-  <table>
-    <thead><tr><th>Producto</th><th>Cant</th><th>P.Unit</th><th>Total</th></tr></thead>
-    <tbody>
-      ${rows}
-    </tbody>
-  </table>
+  <div class="item-header"><span>Producto</span><span>Subtotal</span></div>
+  ${rows}
   <div class="tot">TOTAL: $ ${formatMoney(total)}</div>
   <button onclick="window.print()">Imprimir</button>
 </body></html>`;
@@ -269,18 +272,19 @@ function buildReceiptHeader(title, fecha) {
 function buildReceiptStyles() {
     return `
 <style>
-  body { font-family: Arial, sans-serif; padding: 4px; font-size: 10px; color: #000; }
-  h2 { margin: 0 0 6px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-  td, th { border: 1px solid #666; padding: 2px 3px; font-size: 9px; word-break: break-word; color: #000; }
-  th { font-weight: bold; background: #eee; }
-  .tot { text-align: right; font-weight: bold; font-size: 11px; margin-top: 4px; color: #000; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; padding: 4px; font-size: 10px; color: #000; width: 100%; }
+  .item { border-bottom: 1px dashed #999; padding: 3px 0; }
+  .item-nombre { font-size: 9px; color: #000; word-break: break-word; }
+  .item-detalle { display: flex; justify-content: space-between; font-size: 9px; margin-top: 1px; }
+  .item-detalle .cant-precio { color: #444; }
+  .item-detalle .subtotal { font-weight: bold; color: #000; }
+  .item-header { font-size: 8px; color: #666; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 2px; display: flex; justify-content: space-between; }
+  .tot { text-align: right; font-weight: bold; font-size: 12px; margin-top: 6px; border-top: 2px solid #000; padding-top: 4px; color: #000; }
   .small { color: #222; font-size: 9px; }
   @media print { button { display: none; } }
-  /* Papel 54mm x alto automático — sin corte de página */
   @page { size: 54mm auto; margin: 2mm 3mm; }
-  body.pos80 { width: 48mm; margin: 0 auto; padding: 2px; }
-  @media print { body.pos80 { width: 100%; margin: 0; } }
+  @media print { body { margin: 0; width: 100%; } }
 </style>`;
 }
 
@@ -298,28 +302,24 @@ function openPrintWindow(venta) {
             ? Number(venta.total)
             : items.reduce((acc, it) => acc + Number((it.cantidad||0) * (it.precio_unitario||0)), 0);
         const rows = items.map(it => `
-          <tr>
-            <td>${it.producto?.nombre ?? ''}</td>
-            <td>${it.cantidad ?? ''}</td>
-            <td>${formatMoney(it.precio_unitario ?? 0)}</td>
-            <td>${formatMoney((it.cantidad||0) * (it.precio_unitario||0))}</td>
-          </tr>
-        `).join('');
+          <div class="item">
+            <div class="item-nombre">${it.producto?.nombre ?? ''}</div>
+            <div class="item-detalle">
+              <span class="cant-precio">${it.cantidad ?? ''} × $${formatMoney(it.precio_unitario ?? 0)}</span>
+              <span class="subtotal">$${formatMoney((it.cantidad||0) * (it.precio_unitario||0))}</span>
+            </div>
+          </div>`).join('');
         const html = `<!doctype html>
 <html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="script-src 'none'">
 <title>Comprobante de venta</title>
 ${buildReceiptStyles()}
 </head>
-<body class="pos80">
+<body>
   ${buildReceiptHeader('Comprobante de venta', fecha)}
   <div class="small" style="text-align:right;margin-top:4px">Folio: ${folio}</div>
   <div class="small" style="margin-top:4px">Pago: ${venta.tipo_pago || 'efectivo'}</div>
-  <table>
-    <thead><tr><th>Producto</th><th>Cant</th><th>P.Unit</th><th>Total</th></tr></thead>
-    <tbody>
-      ${rows || ''}
-    </tbody>
-  </table>
+  <div class="item-header"><span>Producto</span><span>Subtotal</span></div>
+  ${rows || ''}
   <div class="tot">TOTAL: $ ${formatMoney(computedTotal)}</div>
   <button onclick="window.print()">Imprimir</button>
   <button onclick="window.close()">Cerrar</button>
@@ -358,8 +358,11 @@ document.addEventListener('DOMContentLoaded', function() {
             loadEmpaquesForProduct(prodId);
         });
     }
+    // 📌 Registrar venta (con verificación de existencia)
     const formVenta = document.getElementById('formVenta');
+    // Botón imprimir carrito
     const btnImprimirCarrito = document.getElementById('imprimirCarrito');
+    // Handler del botón "Vender" (submit del formulario) para venta individual
     if (formVenta) {
         formVenta.addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -432,6 +435,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Carrito de venta (venta atómica)
     const carrito = [];
 
     function renderCarrito() {
@@ -581,6 +585,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // 🔍 Buscar productos mientras se escribe (con verificación de existencia)
     const buscarProductoVenta = document.getElementById("buscarProductoVenta");
     if (buscarProductoVenta) {
         buscarProductoVenta.addEventListener("keydown", function(e) {
@@ -611,6 +616,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // 📌 Registrar producto
     const formProducto = document.getElementById("formProducto");
     if (formProducto) {
         formProducto.addEventListener("submit", async e => {
@@ -663,6 +669,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // 🔎 Búsqueda en listado de productos (tabla principal)
     const busqueda = document.getElementById("busqueda");
     if (busqueda) {
         let t;
@@ -676,6 +683,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // 🗓️ Filtros de historial
     document.querySelectorAll('form[action="/historial"]').forEach(form => {
         form.addEventListener('submit', async e => {
             e.preventDefault();
