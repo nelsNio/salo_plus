@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -59,7 +58,6 @@ func main() {
 
 	r := gin.Default()
 
-	r.Use(gzip.Gzip(gzip.DefaultCompression))
 	r.Use(func(c *gin.Context) {
 		path := c.Request.URL.Path
 		if strings.HasPrefix(path, "/static/") || strings.HasPrefix(path, "/images/") {
