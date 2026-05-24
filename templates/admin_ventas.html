@@ -727,7 +727,12 @@ document.getElementById('nv-dlg-ok').addEventListener('click', async ()=>{
     cerrarDialog();
     showToast(`Venta confirmada — folio V-${data.folio_lote||''}`, 'success');
     openPrintWindowCarrito(
-      itemsSnapshot.map(it=>({nombre:it.nombre,cantidad:it.cantidad,precio_unitario:it.precio_unitario})),
+      itemsSnapshot.map(it=>({
+        nombre: it.nombre,
+        cantidad: it.cantidad,
+        precio_unitario: it.precio_unitario,
+        descuento: calcDesc(it).desc   // incluye el descuento real calculado
+      })),
       fechaISO, tipoPago, data.folio_lote?`V-${data.folio_lote}`:undefined
     );
     carrito.length=0; renderCarrito(); limpiarForm();

@@ -1,42 +1,43 @@
-// ── Caché de productos para la pantalla de ventas (evita una API call por keystroke) ──
-const _PROD_CACHE_TTL = 3 * 60 * 1000; // 3 minutos
-let _prodCache = null;
-let _prodCacheTs = 0;
+// ── Caché de productos — var para compatibilidad Safari/WebKit ──
+var _PROD_CACHE_TTL = 3 * 60 * 1000;
+var _prodCache     = null;
+var _prodCacheTs   = 0;
 
-async function getProductosCached(forceRefresh = false) {
-    const now = Date.now();
+async function getProductosCached(forceRefresh) {
+    forceRefresh = forceRefresh || false;
+    var now = Date.now();
     if (!forceRefresh && _prodCache && (now - _prodCacheTs) < _PROD_CACHE_TTL) {
         return _prodCache;
     }
-    // ?lite=true: sin Preload de empaques, solo campos de búsqueda → respuesta ~10x más liviana
-    const res = await fetch('/productos?lite=true');
-    const data = await res.json();
-    const lista = Array.isArray(data) ? data : (data.items || []);
-    _prodCache = lista;
+    var res  = await fetch('/productos?lite=true');
+    var data = await res.json();
+    var lista = Array.isArray(data) ? data : (data.items || []);
+    _prodCache   = lista;
     _prodCacheTs = now;
     window.__productosById = Object.create(null);
-    lista.forEach(p => { window.__productosById[p.ID] = p; });
+    lista.forEach(function(p) { window.__productosById[p.ID] = p; });
     return lista;
 }
 
 function invalidarCacheProductos() {
-    _prodCache = null;
+    _prodCache   = null;
     _prodCacheTs = 0;
 }
 
-// ── Caché de empaques por producto (evita recargar al seleccionar el mismo producto) ──
-const _EMP_CACHE_TTL = 5 * 60 * 1000; // 5 minutos
-const _empCache = Object.create(null); // { [productoId]: { data, ts } }
+// ── Caché de empaques — var para compatibilidad Safari/WebKit ──
+var _EMP_CACHE_TTL = 5 * 60 * 1000;
+var _empCache      = Object.create(null);
 
-async function getEmpaquesCached(productoId, forceRefresh = false) {
-    const now = Date.now();
-    const hit = _empCache[productoId];
+async function getEmpaquesCached(productoId, forceRefresh) {
+    forceRefresh = forceRefresh || false;
+    var now = Date.now();
+    var hit = _empCache[productoId];
     if (!forceRefresh && hit && (now - hit.ts) < _EMP_CACHE_TTL) {
         return hit.data;
     }
-    const res = await fetch(`/productos/${productoId}/empaques`);
-    const data = await res.json();
-    _empCache[productoId] = { data, ts: now };
+    var res  = await fetch('/productos/' + productoId + '/empaques');
+    var data = await res.json();
+    _empCache[productoId] = { data: data, ts: now };
     return data;
 }
 
@@ -44,8 +45,7 @@ function invalidarCacheEmpaques(productoId) {
     if (productoId != null) {
         delete _empCache[productoId];
     } else {
-        // invalida todo (ej: al actualizar un empaque genérico)
-        Object.keys(_empCache).forEach(k => delete _empCache[k]);
+        Object.keys(_empCache).forEach(function(k) { delete _empCache[k]; });
     }
 }
 
@@ -243,13 +243,24 @@ function openPrintWindowCarrito(items, fechaISO, tipoPago, folioOverride) {
         if (!w) { showToast('Bloqueado por el navegador: habilita ventanas emergentes para imprimir', 'error'); return; }
         const fecha = formatDateTimeLocal(fechaISO || new Date().toISOString());
         const folio = folioOverride ? String(folioOverride) : `C-${Date.now()}`;
-        const rows = items.map(it => `
+        const rows = items.map(it => {
+            const bruto = (it.cantidad ?? 0) * (it.precio_unitario ?? 0);
+            const desc  = Number(it.descuento ?? 0);
+            const neto  = bruto - desc;
+            const descLine = desc > 0
+                ? `<div class="item-desc">Descuento: -$${formatMoney(desc)}</div>`
+                : '';
+            return `
           <div class="item">
             <div class="item-nombre">${it.nombre ?? ''}</div>
             <div class="item-cant">${it.cantidad} x $${formatMoney(it.precio_unitario)}</div>
-            <div class="item-sub">= $${formatMoney(it.cantidad * it.precio_unitario)}</div>
-          </div>`).join('');
-        const total = items.reduce((a, b) => a + (b.cantidad * b.precio_unitario), 0);
+            ${descLine}
+            <div class="item-sub">= $${formatMoney(neto)}</div>
+          </div>`;
+        }).join('');
+        const totalDesc  = items.reduce((a, b) => a + Number(b.descuento ?? 0), 0);
+        const totalBruto = items.reduce((a, b) => a + (b.cantidad * b.precio_unitario), 0);
+        const total      = totalBruto - totalDesc;
         const html = `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=160"><meta http-equiv="Content-Security-Policy" content="script-src 'none'">
 <title>Comprobante de venta (Carrito)</title>
@@ -261,6 +272,7 @@ ${buildReceiptStyles()}
   <div class="small" style="margin-top:2px">Pago: ${tipoPago || 'efectivo'}</div>
   <hr class="sep">
   ${rows}
+  ${totalDesc > 0 ? `<div class="small" style="margin-top:3px;color:#555">Descuentos: -$${formatMoney(totalDesc)}</div>` : ''}
   <div class="tot">TOTAL: $${formatMoney(total)}</div>
   <button onclick="window.print()">Imprimir</button>
 </body></html>`;
@@ -323,6 +335,7 @@ function buildReceiptStyles() {
   .item { border-bottom: 1px dashed #888; padding: 2px 0; word-break: break-word; overflow-wrap: break-word; }
   .item-nombre { font-size: 8px; font-weight: bold; color: #000 !important; }
   .item-cant  { font-size: 8px; color: #000 !important; }
+  .item-desc  { font-size: 8px; color: #555 !important; font-style: italic; }
   .item-sub   { font-size: 8px; font-weight: bold; color: #000 !important; }
   .sep { border: none; border-top: 1px solid #000; margin: 3px 0; }
   .tot { font-weight: bold; font-size: 10px; margin-top: 4px; border-top: 2px solid #000; padding-top: 3px; color: #000 !important; }
