@@ -13,8 +13,8 @@ type Item struct {
 	Producto       Producto `gorm:"foreignKey:ProductoID" json:"producto"`
 	Cantidad       int      `json:"cantidad"`
 	PrecioUnitario float64  `json:"precio_unitario"`
-	Descuento      float64  `json:"descuento"`     // monto descontado en pesos
-	DescuentoPct   float64  `json:"descuento_pct"` // porcentaje (informativo)
+	Descuento      float64  `json:"descuento"     gorm:"default:0"` // monto descontado en pesos
+	DescuentoPct   float64  `json:"descuento_pct" gorm:"default:0"` // porcentaje (informativo)
 }
 
 type Venta struct {
@@ -22,7 +22,7 @@ type Venta struct {
 	Folio           uint      `json:"folio"`
 	Items           []Item    `gorm:"foreignKey:VentaID;constraint:OnDelete:CASCADE" json:"items"`
 	Total           float64   `json:"total"`
-	TotalDescuentos float64   `json:"total_descuentos"`
+	TotalDescuentos float64   `json:"total_descuentos" gorm:"default:0"`
 	TipoPago        string    `json:"tipo_pago"`
 	Fecha           time.Time `json:"fecha"`
 }
