@@ -3,7 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <title>Historial de Ventas</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=20260524">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body { margin: 0; padding: 0; }
+        .page-content { padding: 0 20px 32px; }
+        .page-content input,
+        .page-content button,
+        .page-content select,
+        .page-content textarea { margin: 0; }
+        .panel { background: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.07); margin-bottom: 20px; }
+        .panel-header { padding: 12px 18px; border-bottom: 1px solid var(--border); border-radius: 10px 10px 0 0; background: white; }
+        .panel-header h2 { font-size: 14px; font-weight: 700; color: var(--primary-dark); margin: 0; }
+        .panel-body { padding: 16px 18px; }
+    </style>
 </head>
 <body>
     <header class="app-header">
@@ -13,37 +26,57 @@
             <div class="nit">NIT 1.049.647.310-5</div>
         </div>
     </header>
-    <nav style="margin: 20px 0;">
-         <a href="/">Volver al Inventario</a>
-     </nav>                                  
-    <h1>Historial de Ventas</h1>
-    <form id="formHistorial" method="GET" action="/historial">
-        <label>Desde:</label>
-        <input type="date" name="desde" placeholder="Fecha desde">
-        <label>Hasta:</label>
-        <input type="date" name="hasta" placeholder="Fecha hasta">
-        <button type="submit">Filtrar</button>
-    </form>
-    <div>
-    <strong>Total vendido hoy:</strong> $<span id="totalHoy">0</span><br>
-    <strong>Total vendido en general:</strong> $<span id="totalGeneral">0</span>
-   </div>
+    <nav style="margin:0;padding:10px 20px;">
+        <a href="/">Inventario</a>
+        <a href="/admin_ventas">Ventas</a>
+        <a href="/historial_ventas" style="background:var(--primary-dark);">Historial</a>
+        <a href="/reportes">Reportes / Caja</a>
+    </nav>
+    <div class="page-content">
+        <h1 style="margin-top:16px;">Historial de Ventas</h1>
 
-    <table>
-        <thead>
-        <tr>
-            <th>ID</th>
-            <th>Fecha</th>
-            <th>Pago</th>
-            <th>Folio</th>
-            <th>Total</th>
-            <th>Items</th>
-            <th>Acciones</th>
-        </tr>
-        </thead>
-        <tbody id="tablaVentasHistorial"></tbody>
-    </table>
-   
+        <div class="panel">
+            <div class="panel-header"><h2>Filtrar historial</h2></div>
+            <div class="panel-body">
+                <form id="formHistorial" method="GET" action="/historial">
+                    <label>Desde:</label>
+                    <input type="date" name="desde" placeholder="Fecha desde">
+                    <label>Hasta:</label>
+                    <input type="date" name="hasta" placeholder="Fecha hasta">
+                    <button type="submit">Filtrar</button>
+                </form>
+                <div style="margin-top:14px;">
+                    <strong>Total vendido hoy:</strong>
+                    $<span id="totalHoy" style="font-size:20px;font-weight:800;color:var(--primary-dark)">0</span>
+                    &nbsp;&nbsp;
+                    <strong>Total vendido en general:</strong>
+                    $<span id="totalGeneral" style="font-size:20px;font-weight:800;color:var(--primary-dark)">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header"><h2>Ventas</h2></div>
+            <div class="panel-body">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Fecha</th>
+                        <th>Pago</th>
+                        <th>Folio</th>
+                        <th>Total</th>
+                        <th>Total descuentos</th>
+                        <th>Items</th>
+                        <th>Acciones</th>
+                    </tr>
+                    </thead>
+                    <tbody id="tablaVentasHistorial"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/script.js"></script>
 </body>
 </html>

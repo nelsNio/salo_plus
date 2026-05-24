@@ -1,3 +1,54 @@
+// ── Caché de productos para la pantalla de ventas (evita una API call por keystroke) ──
+const _PROD_CACHE_TTL = 3 * 60 * 1000; // 3 minutos
+let _prodCache = null;
+let _prodCacheTs = 0;
+
+async function getProductosCached(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && _prodCache && (now - _prodCacheTs) < _PROD_CACHE_TTL) {
+        return _prodCache;
+    }
+    // ?lite=true: sin Preload de empaques, solo campos de búsqueda → respuesta ~10x más liviana
+    const res = await fetch('/productos?lite=true');
+    const data = await res.json();
+    const lista = Array.isArray(data) ? data : (data.items || []);
+    _prodCache = lista;
+    _prodCacheTs = now;
+    window.__productosById = Object.create(null);
+    lista.forEach(p => { window.__productosById[p.ID] = p; });
+    return lista;
+}
+
+function invalidarCacheProductos() {
+    _prodCache = null;
+    _prodCacheTs = 0;
+}
+
+// ── Caché de empaques por producto (evita recargar al seleccionar el mismo producto) ──
+const _EMP_CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const _empCache = Object.create(null); // { [productoId]: { data, ts } }
+
+async function getEmpaquesCached(productoId, forceRefresh = false) {
+    const now = Date.now();
+    const hit = _empCache[productoId];
+    if (!forceRefresh && hit && (now - hit.ts) < _EMP_CACHE_TTL) {
+        return hit.data;
+    }
+    const res = await fetch(`/productos/${productoId}/empaques`);
+    const data = await res.json();
+    _empCache[productoId] = { data, ts: now };
+    return data;
+}
+
+function invalidarCacheEmpaques(productoId) {
+    if (productoId != null) {
+        delete _empCache[productoId];
+    } else {
+        // invalida todo (ej: al actualizar un empaque genérico)
+        Object.keys(_empCache).forEach(k => delete _empCache[k]);
+    }
+}
+
 // Configuración del negocio (edita estos valores)
 const businessInfo = {
   nombre: 'Droguería Salo Plus',
@@ -61,10 +112,7 @@ async function loadEmpaquesForProduct(productoId) {
         return;
     }
     try {
-        console.log('📡 Fetching empaques for product:', productoId);
-        const res = await fetch(`/productos/${productoId}/empaques`);
-        const productoEmpaques = await res.json();
-        console.log('📦 Received empaques data:', productoEmpaques);
+        const productoEmpaques = await getEmpaquesCached(productoId);
         window.__empaquesByProd = window.__empaquesByProd || Object.create(null);
         window.__empaquesByProd[productoId] = Array.isArray(productoEmpaques) ? productoEmpaques : [];
         // Obtener precio base del producto
@@ -168,8 +216,7 @@ async function populateProductoSelect() {
     if (!select) return;
     select.innerHTML = '<option value="">Seleccione un producto</option>';
     try {
-        const res = await fetch('/productos');
-        const productos = await res.json();
+        const productos = await getProductosCached();
         window.__productosById = Object.create(null);
         productos.forEach(p => {
             window.__productosById[p.ID] = p;
@@ -408,6 +455,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 showToast('Venta registrada con éxito', 'success');
                 formVenta.reset();
+                invalidarCacheProductos();
                 await cargarProductos();
                 await cargarVentas();
                 if (typeof populateProductoSelect === 'function') populateProductoSelect();
@@ -557,7 +605,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     return {
                       producto_id: it.producto_id,
-                      cantidad: cantidadUnidades
+                      cantidad: cantidadUnidades,
+                      descuento: it.descuento || 0,
+                      descuento_pct: it.descuentoPct || 0
                     };
                   })
                 })
@@ -570,6 +620,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 showToast('Venta confirmada', 'success');
                 carrito.length = 0;
                 renderCarrito();
+                invalidarCacheProductos();
                 await cargarProductos();
                 await cargarVentas();
                 const tipoPago = (document.getElementById('tipoPago')?.value) || 'efectivo';
@@ -591,10 +642,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         buscarProductoVenta.addEventListener("input", async e => {
-            let q = e.target.value;
-            if (q.length < 2) return;
-            let res = await fetch(`/buscar?q=${encodeURIComponent(q)}`);
-            let productos = await res.json();
+            let q = e.target.value.trim();
+            if (q.length < 1) return;
+            // Filtra desde el caché en memoria — sin API call por keystroke
+            const todos = await getProductosCached();
+            const ql = q.toLowerCase();
+            const productos = todos.filter(p =>
+                p.nombre?.toLowerCase().includes(ql) ||
+                p.laboratorio?.toLowerCase().includes(ql) ||
+                p.codigo_barras?.includes(q)
+            );
             let select = document.getElementById("productoSeleccionado");
             if (!select) return;
             select.innerHTML = '<option value="">Seleccione un producto</option>';
@@ -607,7 +664,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (productos.length > 0) {
                 select.value = productos[0].ID;
                 await loadEmpaquesForProduct(productos[0].ID);
-                console.log(`🔍 Auto-selected product: ${productos[0].nombre} (ID: ${productos[0].ID})`);
             }
         });
     }
@@ -705,6 +761,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <td>${it.producto?.nombre ?? ''}</td>
                                 <td>${it.cantidad ?? ''}</td>
                                 <td>${it.precio_unitario != null ? Number(it.precio_unitario).toFixed(2) : ''}</td>
+                                <td>${it.descuento > 0 ? '- $' + Number(it.descuento).toFixed(2) : '—'}</td>
                                 <td>${Number(totalItem).toFixed(2)}</td>
                             </tr>`;
                         }).join('');
@@ -714,11 +771,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <th style="text-align:left;">Producto</th>
                                     <th style="text-align:left;">Cantidad</th>
                                     <th style="text-align:left;">Precio unitario</th>
+                                    <th style="text-align:left;">Descuento</th>
                                     <th style="text-align:left;">Total</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${itemsRows || '<tr><td colspan="4">Sin items</td></tr>'}
+                                ${itemsRows || '<tr><td colspan="5">Sin items</td></tr>'}
                             </tbody>
                         </table>`;
                         const jsonPretty = (() => { try { return JSON.stringify(v, null, 2); } catch { return ''; } })();
@@ -728,6 +786,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <td>${v.tipo_pago ?? ''}</td>
                             <td>${v.folio ?? ''}</td>
                             <td>${totalVenta.toFixed(2)}</td>
+                            <td>${v.total_descuentos > 0 ? '$'+Number(v.total_descuentos).toFixed(2) : '—'}</td>
                             <td>${itemsTable}</td>
                             <td><button data-print="${idx}">Imprimir</button></td>
                            </tr>`;
@@ -750,6 +809,57 @@ document.addEventListener('DOMContentLoaded', function() {
 
     cargarProductos();
     cargarVentas();
+
+    // Egresos
+    const formEgreso = document.getElementById('formEgreso');
+    if (formEgreso) {
+        formEgreso.addEventListener('submit', e => { e.preventDefault(); registrarEgreso(formEgreso); });
+        // default date
+        const fi = formEgreso.querySelector('input[name="fecha"]');
+        if (fi) { const d=new Date(),p=n=>String(n).padStart(2,'0'); fi.value=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+        cargarEgresos();
+    }
+
+    const formFiltroEgresos = document.getElementById('formFiltroEgresos');
+    if (formFiltroEgresos) {
+        formFiltroEgresos.addEventListener('submit', e => {
+            e.preventDefault();
+            const fd = new FormData(formFiltroEgresos);
+            cargarEgresos(fd.get('desde'), fd.get('hasta'));
+        });
+    }
+
+    // Reportes
+    const formReporte = document.getElementById('formReporte');
+    if (formReporte) {
+        formReporte.addEventListener('submit', e => {
+            e.preventDefault();
+            const tipo = document.getElementById('tipoReporte')?.value || 'diario';
+            const val  = tipo === 'mensual'
+                ? document.getElementById('mesReporte')?.value
+                : document.getElementById('fechaReporte')?.value;
+            if (val) cargarReporte(tipo, val);
+        });
+        // default load today
+        const d=new Date(),p=n=>String(n).padStart(2,'0');
+        const today=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+        const fechaEl = document.getElementById('fechaReporte');
+        if (fechaEl) { fechaEl.value=today; cargarReporte('diario', today); }
+    }
+
+    // Cierre de caja
+    const formCierre = document.getElementById('formCierre');
+    if (formCierre) {
+        formCierre.addEventListener('submit', e => { e.preventDefault(); generarCierre(formCierre); });
+        // default dates
+        const d=new Date(),p=n=>String(n).padStart(2,'0');
+        const today=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+        const fi2 = formCierre.querySelector('input[name="fecha_inicio"]');
+        const ff2 = formCierre.querySelector('input[name="fecha_fin"]');
+        if (fi2) fi2.value=today;
+        if (ff2) ff2.value=today;
+        cargarCierres();
+    }
 });
 
 // 📌 Cargar productos al inicio
@@ -904,9 +1014,8 @@ async function cargarProductos(q = "") {
                 if (!changed) { span.textContent = originalText; return; }
 
                 try {
-                    const respGet = await fetch('/productos');
-                    const productos = await respGet.json();
-                    const prod = (productos || []).find(x => String(x.ID) === String(id));
+                    const todosCached = await getProductosCached();
+                    const prod = todosCached.find(x => String(x.ID) === String(id));
                     if (!prod) { showToast('Producto no encontrado', 'error'); span.textContent = originalText; return; }
                     prod[field] = parsed;
                     const resp = await fetch(`/productos/${id}`, {
@@ -921,6 +1030,7 @@ async function cargarProductos(q = "") {
                     if (field === 'precio_unitario') span.textContent = formatMoney(parsed);
                     else span.textContent = (type === 'int') ? String(parsed) : (parsed || '');
                     showToast('Actualizado', 'success');
+                    invalidarCacheProductos();
                     if (typeof populateProductoSelect === 'function') { populateProductoSelect(); }
                 } catch (e) {
                     console.error(e);
@@ -959,6 +1069,7 @@ async function cargarVentas() {
                 <td>${it.producto?.nombre ?? ''}</td>
                 <td>${it.cantidad ?? ''}</td>
                 <td>${it.precio_unitario != null ? Number(it.precio_unitario).toFixed(2) : ''}</td>
+                <td>${it.descuento > 0 ? '- $' + Number(it.descuento).toFixed(2) : '—'}</td>
                 <td>${Number(totalItem).toFixed(2)}</td>
             </tr>`;
         }).join('');
@@ -968,11 +1079,12 @@ async function cargarVentas() {
                     <th style="text-align:left;">Producto</th>
                     <th style="text-align:left;">Cantidad</th>
                     <th style="text-align:left;">Precio unitario</th>
+                    <th style="text-align:left;">Descuento</th>
                     <th style="text-align:left;">Total</th>
                 </tr>
             </thead>
             <tbody>
-                ${itemsRows || '<tr><td colspan="4">Sin items</td></tr>'}
+                ${itemsRows || '<tr><td colspan="5">Sin items</td></tr>'}
             </tbody>
         </table>`;
         tbody.innerHTML += `<tr>
@@ -981,6 +1093,7 @@ async function cargarVentas() {
             <td>${v.tipo_pago ?? ''}</td>
             <td>${v.folio ?? ''}</td>
             <td>${totalVenta.toFixed(2)}</td>
+            <td>${v.total_descuentos > 0 ? '$'+Number(v.total_descuentos).toFixed(2) : '—'}</td>
             <td>${itemsTable}</td>
             <td><button data-print="${idx}">Imprimir</button></td>
         </tr>`;
@@ -1187,6 +1300,7 @@ async function asociarEmpaque(event) {
 
         event.target.reset();
         document.getElementById('empaqueGenerico').selectedIndex = 0;
+        invalidarCacheEmpaques(parseInt(productoId));
         await cargarEmpaquesProducto(productoId);
         cargarProductos();
         alert('Empaque asociado exitosamente');
@@ -1211,6 +1325,7 @@ async function desasociarEmpaque(productoEmpaqueId) {
         }
 
         const productoId = document.getElementById('productoIdModal').value;
+        invalidarCacheEmpaques(parseInt(productoId));
         await cargarEmpaquesProducto(productoId);
         cargarProductos();
         alert('Empaque desasociado exitosamente');
@@ -1241,4 +1356,138 @@ function configurarModalEmpaqueProducto() {
     if (formAsociar) {
         formAsociar.addEventListener('submit', asociarEmpaque);
     }
+}
+
+// ── Egresos ──
+async function cargarEgresos(desde, hasta) {
+    let url = '/egresos';
+    const params = [];
+    if (desde) params.push(`desde=${encodeURIComponent(desde)}`);
+    if (hasta) params.push(`hasta=${encodeURIComponent(hasta)}`);
+    if (params.length) url += '?' + params.join('&');
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+        const tbody = document.getElementById('tablaEgresos');
+        const totalEl = document.getElementById('totalEgresos');
+        if (totalEl) totalEl.textContent = Number(data.total || 0).toFixed(2);
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        (data.egresos || []).forEach((e, idx) => {
+            const tiposLabel = { gasto_operativo:'Gasto operativo', pago_proveedor:'Pago proveedor', retiro:'Retiro', servicio:'Servicio', otro:'Otro' };
+            tbody.innerHTML += `<tr>
+                <td>${formatDateTimeLocal(e.fecha)}</td>
+                <td>${e.concepto}</td>
+                <td>${tiposLabel[e.tipo] || e.tipo}</td>
+                <td>${e.tipo_pago}</td>
+                <td><strong>$ ${Number(e.monto).toFixed(2)}</strong></td>
+                <td><button data-del-egreso="${e.ID}" style="background:#dc2626;padding:3px 8px;font-size:12px;">Eliminar</button></td>
+            </tr>`;
+        });
+        tbody.querySelectorAll('button[data-del-egreso]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (!confirm('¿Eliminar este egreso?')) return;
+                const id = btn.getAttribute('data-del-egreso');
+                await fetch(`/egresos/${id}`, { method: 'DELETE' });
+                cargarEgresos();
+            });
+        });
+    } catch(e) { console.error(e); }
+}
+
+async function registrarEgreso(formEl) {
+    const fd = new FormData(formEl);
+    const datos = Object.fromEntries(fd.entries());
+    datos.monto = parseFloat(datos.monto);
+    if (!datos.concepto || !(datos.monto > 0)) { showToast('Concepto y monto son requeridos', 'error'); return; }
+    if (!datos.fecha) { const d = new Date(); const p = n=>String(n).padStart(2,'0'); datos.fecha = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+    // convert date to ISO
+    const iso = isoFromDateInput(datos.fecha);
+    if (iso) datos.fecha = iso;
+    try {
+        const resp = await fetch('/egresos', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(datos) });
+        if (!resp.ok) { const err = await resp.json().catch(()=>({})); throw new Error(err.error||'Error'); }
+        showToast('Egreso registrado', 'success');
+        formEl.reset();
+        // reset date to today
+        const fechaInput = formEl.querySelector('input[name="fecha"]');
+        if (fechaInput) { const d=new Date(),p=n=>String(n).padStart(2,'0'); fechaInput.value=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+        cargarEgresos();
+    } catch(e) { showToast(e.message||'Error al registrar egreso', 'error'); }
+}
+
+// ── Reportes ──
+async function cargarReporte(tipo, fechaOMes) {
+    const resEl = document.getElementById('reporteResultado');
+    if (!resEl) return;
+    resEl.innerHTML = '<p style="color:#6b7280">Cargando...</p>';
+    const param = tipo === 'mensual' ? `mes=${fechaOMes}` : `fecha=${fechaOMes}`;
+    try {
+        const res = await fetch(`/api/reportes?tipo=${tipo}&${param}`);
+        const d = await res.json();
+        const v = d.ventas || {}, eg = d.egresos || {};
+        const fmt = n => Number(n||0).toLocaleString('es-CO', {minimumFractionDigits:0});
+        resEl.innerHTML = `
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px">
+            <div class="reporte-card"><div class="rc-label">Total ventas</div><div class="rc-val">$ ${fmt(v.total)}</div><div class="rc-sub">${v.cantidad||0} transacciones</div></div>
+            <div class="reporte-card rc-desc"><div class="rc-label">Descuentos</div><div class="rc-val">− $ ${fmt(v.descuentos)}</div></div>
+            <div class="reporte-card"><div class="rc-label">Efectivo</div><div class="rc-val">$ ${fmt(v.efectivo)}</div></div>
+            <div class="reporte-card"><div class="rc-label">Transferencia</div><div class="rc-val">$ ${fmt(v.transferencia)}</div></div>
+            <div class="reporte-card rc-eg"><div class="rc-label">Egresos</div><div class="rc-val">$ ${fmt(eg.total)}</div><div class="rc-sub">${eg.cantidad||0} registros</div></div>
+            <div class="reporte-card rc-neto"><div class="rc-label">Neto en caja</div><div class="rc-val">$ ${fmt(d.neto_caja)}</div><div class="rc-sub">Efectivo − Egresos</div></div>
+          </div>
+          ${Object.keys(eg.por_tipo||{}).length ? `<div style="margin-top:12px"><strong>Egresos por tipo:</strong> ${Object.entries(eg.por_tipo).map(([k,v])=>`<span style="margin-right:12px">${k}: <strong>$${fmt(v)}</strong></span>`).join('')}</div>` : ''}`;
+    } catch(e) { resEl.innerHTML = '<p style="color:#dc2626">Error cargando reporte</p>'; }
+}
+
+// ── Cierre de Caja ──
+async function generarCierre(formEl) {
+    const fd = new FormData(formEl);
+    const datos = Object.fromEntries(fd.entries());
+    if (!datos.fecha_inicio || !datos.fecha_fin) { showToast('Seleccioná el período del cierre', 'error'); return; }
+    try {
+        const resp = await fetch('/cierres', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(datos) });
+        if (!resp.ok) { const err = await resp.json().catch(()=>({})); throw new Error(err.error||'Error'); }
+        const cierre = await resp.json();
+        showToast('Cierre generado correctamente', 'success');
+        const resEl = document.getElementById('cierreResultado');
+        if (resEl) {
+            const fmt = n => Number(n||0).toLocaleString('es-CO',{minimumFractionDigits:0});
+            resEl.innerHTML = `<div style="background:#f0f7ff;border:1.5px solid #bdd4f5;border-radius:8px;padding:16px;margin-top:10px">
+              <strong>Cierre generado — Folio #${cierre.ID}</strong><br>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-top:10px">
+                <div><small>Ventas efectivo</small><br><strong>$ ${fmt(cierre.total_ventas_efectivo)}</strong></div>
+                <div><small>Ventas transferencia</small><br><strong>$ ${fmt(cierre.total_ventas_transferencia)}</strong></div>
+                <div><small>Descuentos</small><br><strong style="color:#7c3aed">− $ ${fmt(cierre.total_descuentos)}</strong></div>
+                <div><small>Egresos efectivo</small><br><strong style="color:#dc2626">− $ ${fmt(cierre.total_egresos_efectivo)}</strong></div>
+                <div><small>Egresos transferencia</small><br><strong style="color:#dc2626">− $ ${fmt(cierre.total_egresos_transferencia)}</strong></div>
+                <div style="background:#004b99;color:white;padding:8px;border-radius:6px"><small>Neto en caja</small><br><strong>$ ${fmt(cierre.neto_caja)}</strong></div>
+              </div>
+            </div>`;
+        }
+        cargarCierres();
+    } catch(e) { showToast(e.message||'Error al generar cierre', 'error'); }
+}
+
+async function cargarCierres() {
+    const tbody = document.getElementById('tablaCierres');
+    if (!tbody) return;
+    try {
+        const res = await fetch('/cierres');
+        const cierres = await res.json();
+        const fmt = n => Number(n||0).toLocaleString('es-CO',{minimumFractionDigits:0});
+        tbody.innerHTML = '';
+        (cierres||[]).forEach(c => {
+            const fi = new Date(c.fecha_inicio).toLocaleDateString('es-CO');
+            const ff = new Date(c.fecha_fin).toLocaleDateString('es-CO');
+            tbody.innerHTML += `<tr>
+                <td>${formatDateTimeLocal(c.created_at||c.CreatedAt)}</td>
+                <td>${fi} → ${ff}</td>
+                <td>$ ${fmt(c.total_ventas)}</td>
+                <td>$ ${fmt(c.total_egresos)}</td>
+                <td><strong>$ ${fmt(c.neto_caja)}</strong></td>
+                <td>${c.observacion||'—'}</td>
+            </tr>`;
+        });
+    } catch(e) { console.error(e); }
 }

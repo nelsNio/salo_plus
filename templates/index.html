@@ -3,7 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <title>Inventario - Droguería</title>
-    <link rel="stylesheet" href="/static/style.css?v=2025081223">
+    <link rel="stylesheet" href="/static/style.css?v=20260524">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body { margin: 0; padding: 0; }
+        .page-content { padding: 0 20px 32px; }
+        .page-content input,
+        .page-content button,
+        .page-content select,
+        .page-content textarea { margin: 0; }
+        .panel { background: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.07); margin-bottom: 20px; }
+        .panel-header { padding: 12px 18px; border-bottom: 1px solid var(--border); border-radius: 10px 10px 0 0; background: white; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+        .panel-header h2 { font-size: 14px; font-weight: 700; color: var(--primary-dark); margin: 0; }
+        .panel-body { padding: 16px 18px; }
+    </style>
 </head>
 <body>
     <header class="app-header">
@@ -13,140 +26,155 @@
             <div class="nit">NIT 1.049.647.310-5</div>
         </div>
     </header>
-    <h1>Inventario</h1>
-        <nav style="margin: 20px 0;">
-          <a href="/admin_ventas">Ir a Ventas</a>
-         <a href="/admin_empaques">Gestión de Empaques</a>
-         <a href="/historial_ventas">Ver Historial de Ventas</a>
-     </nav>
-    <h3>Agregar producto</h3>
-<form id="formProducto">
-    <label for="fecha_ingreso">Fecha Ingreso:</label>
-    <input id="fecha_ingreso" type="date" name="fecha_ingreso" placeholder="Fecha ingreso" required>
-    <input name="nombre" placeholder="Nombre y concentración" required>
-    <input name="laboratorio" placeholder="Laboratorio">
-    <input name="presentacion" placeholder="Presentación">
-    <label for="precio_unitario">Precio Unitario:</label>
-    <input id="precio_unitario" name="precio_unitario" type="number" step="0.01" min="0" placeholder="Precio unitario" required>
-    <input type="number" name="cantidad" placeholder="Cantidad">
-    <input name="lote" placeholder="Lote">
-    <input name="codigo_barras" placeholder="Código de barras">
-    <input name="registro_invima" placeholder="Registro INVIMA">
-    <label for="fecha_venc">Fecha Vencimiento:</label>
-    <input id="fecha_venc" type="date" name="fecha_venc" placeholder="Fecha vencimiento">
-    <div style="display: flex; gap: 15px; align-items: flex-start;">
-        <input name="observacion" placeholder="Observación" style="width: 250px;">
-        
-        <!-- Sección de Empaques -->
-        <div class="empaque-selector">
-            <label for="empaquesDisponibles">Empaques (Opcional):</label>
-            <div class="empaque-controls">
-                <select id="empaquesDisponibles" style="width: 150px;">
-                    <option value="">Seleccionar empaque...</option>
-                </select>
-                <button type="button" id="agregarEmpaqueExistente" class="btn-add-empaque">+</button>
+    <nav style="margin:0;padding:10px 20px;">
+        <a href="/" style="background:var(--primary-dark);">Inventario</a>
+        <a href="/admin_ventas">Ventas</a>
+        <a href="/admin_empaques">Empaques</a>
+        <a href="/historial_ventas">Historial</a>
+        <a href="/reportes">Reportes / Caja</a>
+    </nav>
+
+    <div class="page-content">
+        <h1 style="margin-top:16px;">Inventario</h1>
+
+        <div class="panel">
+            <div class="panel-header"><h2>Agregar producto</h2></div>
+            <div class="panel-body">
+                <form id="formProducto">
+                    <label for="fecha_ingreso">Fecha Ingreso:</label>
+                    <input id="fecha_ingreso" type="date" name="fecha_ingreso" placeholder="Fecha ingreso" required>
+                    <input name="nombre" placeholder="Nombre y concentración" required>
+                    <input name="laboratorio" placeholder="Laboratorio">
+                    <input name="presentacion" placeholder="Presentación">
+                    <label for="precio_unitario">Precio Unitario:</label>
+                    <input id="precio_unitario" name="precio_unitario" type="number" step="0.01" min="0" placeholder="Precio unitario" required>
+                    <input type="number" name="cantidad" placeholder="Cantidad">
+                    <input name="lote" placeholder="Lote">
+                    <input name="codigo_barras" placeholder="Código de barras">
+                    <input name="registro_invima" placeholder="Registro INVIMA">
+                    <label for="fecha_venc">Fecha Vencimiento:</label>
+                    <input id="fecha_venc" type="date" name="fecha_venc" placeholder="Fecha vencimiento">
+                    <div style="display: flex; gap: 15px; align-items: flex-start;">
+                        <input name="observacion" placeholder="Observación" style="width: 250px;">
+
+                        <!-- Sección de Empaques -->
+                        <div class="empaque-selector">
+                            <label for="empaquesDisponibles">Empaques (Opcional):</label>
+                            <div class="empaque-controls">
+                                <select id="empaquesDisponibles" style="width: 150px;">
+                                    <option value="">Seleccionar empaque...</option>
+                                </select>
+                                <button type="button" id="agregarEmpaqueExistente" class="btn-add-empaque">+</button>
+                            </div>
+
+                            <div id="empaquesSeleccionados" class="empaques-selected">
+                                <div id="listaEmpaquesSeleccionados" class="empaques-list">
+                                    <span class="no-empaques">Sin empaques seleccionados</span>
+                                </div>
+                            </div>
+
+                            <small class="empaque-help">
+                                <a href="/admin_empaques" target="_blank">Crear nuevo empaque</a>
+                            </small>
+                        </div>
+                    </div>
+
+                    <button type="submit">Guardar</button>
+                </form>
             </div>
-            
-            <div id="empaquesSeleccionados" class="empaques-selected">
-                <div id="listaEmpaquesSeleccionados" class="empaques-list">
-                    <span class="no-empaques">Sin empaques seleccionados</span>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Productos</h2>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <input id="busqueda" placeholder="Buscar por nombre, lote o INVIMA" style="min-width:220px;">
+                    <div id="paginacionProductos" style="display:flex;align-items:center;gap:8px;">
+                        <button id="prevProdPage" type="button">Anterior</button>
+                        <span id="prodPageInfo">Página 1/1</span>
+                        <button id="nextProdPage" type="button">Siguiente</button>
+                        <label for="prodPageSize" style="margin-left:8px;">Por página:</label>
+                        <select id="prodPageSize">
+                            <option value="10">10</option>
+                            <option value="20" selected>20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                        <span id="prodTotalInfo" style="margin-left:8px;color:#666"></span>
+                    </div>
                 </div>
             </div>
-            
-            <small class="empaque-help">
-                <a href="/admin_empaques" target="_blank">Crear nuevo empaque</a>
-            </small>
-        </div>
-    </div>
-    
-    <button type="submit">Guardar</button>
-</form>
-<h3>Buscar</h3>
-<input id="busqueda" placeholder="Buscar por nombre, lote o INVIMA">
-
-    <h2>Lista de Productos</h2>
-   <table>
-  <thead>
-  <tr>
- <th>Fecha ingreso</th><th>Nombre</th><th>Lab</th><th>Presentación</th><th>Precio</th>
- <th>Cant</th><th>Lote</th><th>Código de barras</th><th>Registro INVIMA</th><th>Vencimiento 
-    <div style="font-size: 10px; font-weight: normal; margin-top: 2px;">
-        <span style="background: #ffebee; color: #c62828; padding: 1px 3px; border-radius: 2px;">≤30d</span>
-        <span style="background: #fff8e1; color: #f57f17; padding: 1px 3px; border-radius: 2px;">≤90d</span>
-        <span style="background: #e8f5e8; color: #2e7d32; padding: 1px 3px; border-radius: 2px;">>90d</span>
-    </div>
-</th><th>Obs</th><th>Empaques</th><th>Acciones</th>
-  </tr>
-  </thead>
-<tbody id="tablaProductos"></tbody>
-</table>
-
-<div id="paginacionProductos" style="margin-top:8px; display:flex; align-items:center; gap:8px;">
-  <button id="prevProdPage" type="button">Anterior</button>
-  <span id="prodPageInfo">Página 1/1</span>
-  <button id="nextProdPage" type="button">Siguiente</button>
-  <label for="prodPageSize" style="margin-left:12px;">Por página:</label>
-  <select id="prodPageSize">
-    <option value="10">10</option>
-    <option value="20" selected>20</option>
-    <option value="50">50</option>
-    <option value="100">100</option>
-  </select>
-  <span id="prodTotalInfo" style="margin-left:12px;color:#666"></span>
-  
-</div>
-
-<!-- Modal para gestionar empaques de producto -->
-<div id="modalEmpaqueProducto" class="modal" style="display: none;">
-    <div class="modal-content">
-        <span class="close">&times;</span>
-        <h3 id="tituloModalEmpaque">Gestionar Empaques del Producto</h3>
-        
-        <div class="producto-info">
-            <strong id="nombreProductoModal"></strong>
-            <small id="labProductoModal"></small>
-        </div>
-        
-        <!-- Sección para agregar nuevo empaque al producto -->
-        <div class="empaque-section">
-            <h4>Asociar Empaque Genérico</h4>
-            <form id="formAsociarEmpaque">
-                <input type="hidden" id="productoIdModal">
-                
-                <div class="form-row">
-                    <label for="empaqueGenerico">Empaque:</label>
-                    <select id="empaqueGenerico" required>
-                        <option value="">Seleccionar empaque genérico...</option>
-                    </select>
-                </div>
-                
-                <button type="submit">Asociar Empaque</button>
-            </form>
-        </div>
-        
-        <!-- Lista de empaques asociados al producto -->
-        <div class="empaque-section">
-            <h4>Empaques Asociados</h4>
-            <table id="tablaEmpaquesProducto">
-                <thead>
+            <div class="panel-body">
+                <table>
+                    <thead>
                     <tr>
-                        <th>Tipo</th>
-                        <th>Factor</th>
-                        <th>Descripción</th>
-                        <th>Acciones</th>
+                        <th>Fecha ingreso</th><th>Nombre</th><th>Lab</th><th>Presentación</th><th>Precio</th>
+                        <th>Cant</th><th>Lote</th><th>Código de barras</th><th>Registro INVIMA</th><th>Vencimiento
+                            <div style="font-size: 10px; font-weight: normal; margin-top: 2px;">
+                                <span style="background: #ffebee; color: #c62828; padding: 1px 3px; border-radius: 2px;">≤30d</span>
+                                <span style="background: #fff8e1; color: #f57f17; padding: 1px 3px; border-radius: 2px;">≤90d</span>
+                                <span style="background: #e8f5e8; color: #2e7d32; padding: 1px 3px; border-radius: 2px;">>90d</span>
+                            </div>
+                        </th><th>Obs</th><th>Empaques</th><th>Acciones</th>
                     </tr>
-                </thead>
-                <tbody id="tablaEmpaquesProductoBody">
-                </tbody>
-            </table>
-        </div>
-        
-        <div class="modal-buttons">
-            <button type="button" onclick="cerrarModalEmpaqueProducto()">Cerrar</button>
+                    </thead>
+                    <tbody id="tablaProductos"></tbody>
+                </table>
+            </div>
         </div>
     </div>
-</div>
 
-<script src="/static/script.js"></script>
+    <!-- Modal para gestionar empaques de producto -->
+    <div id="modalEmpaqueProducto" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3 id="tituloModalEmpaque">Gestionar Empaques del Producto</h3>
+
+            <div class="producto-info">
+                <strong id="nombreProductoModal"></strong>
+                <small id="labProductoModal"></small>
+            </div>
+
+            <!-- Sección para agregar nuevo empaque al producto -->
+            <div class="empaque-section">
+                <h4>Asociar Empaque Genérico</h4>
+                <form id="formAsociarEmpaque">
+                    <input type="hidden" id="productoIdModal">
+
+                    <div class="form-row">
+                        <label for="empaqueGenerico">Empaque:</label>
+                        <select id="empaqueGenerico" required>
+                            <option value="">Seleccionar empaque genérico...</option>
+                        </select>
+                    </div>
+
+                    <button type="submit">Asociar Empaque</button>
+                </form>
+            </div>
+
+            <!-- Lista de empaques asociados al producto -->
+            <div class="empaque-section">
+                <h4>Empaques Asociados</h4>
+                <table id="tablaEmpaquesProducto">
+                    <thead>
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Factor</th>
+                            <th>Descripción</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaEmpaquesProductoBody">
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="modal-buttons">
+                <button type="button" onclick="cerrarModalEmpaqueProducto()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
 </body>
 </html>

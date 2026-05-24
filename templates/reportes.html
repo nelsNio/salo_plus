@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Reportes / Caja — Droguería Salo Plus</title>
+  <link rel="stylesheet" href="/static/style.css?v=20260524">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Tabs ── */
+    .tab-bar{display:flex;gap:0;margin-bottom:0;border-bottom:2px solid var(--primary);}
+    .tab-btn{background:#f3f4f6;color:var(--muted);border:1px solid var(--border);border-bottom:none;border-radius:6px 6px 0 0;padding:10px 22px;cursor:pointer;font-size:14px;font-weight:600;margin-right:4px;transition:all .15s;}
+    .tab-btn.active{background:white;color:var(--primary-dark);border-color:var(--primary);border-bottom:2px solid white;margin-bottom:-2px;}
+    .tab-btn:hover:not(.active){background:#e8f0fc;color:var(--primary);}
+    .tab-panel{display:none;padding-top:20px;}
+    .tab-panel.active{display:block;}
+
+    /* ── Cards ── */
+    .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:18px;}
+    .stat-card{background:white;border:1px solid var(--border);border-radius:8px;padding:14px 16px;box-shadow:0 2px 6px rgba(0,0,0,.06);}
+    .stat-card .sc-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
+    .stat-card .sc-val{font-size:21px;font-weight:800;color:var(--primary-dark);}
+    .stat-card.danger .sc-val{color:#dc2626;}
+    .stat-card.success .sc-val{color:#16a34a;}
+    .stat-card.purple .sc-val{color:#7c3aed;}
+
+    /* ── Section panel ── */
+    .sec{background:white;border:1px solid var(--border);border-radius:8px;padding:18px;margin-bottom:16px;box-shadow:0 2px 5px rgba(0,0,0,.05);}
+    .sec h3{margin:0 0 12px;color:var(--primary-dark);font-size:14px;font-weight:700;border-bottom:1px solid var(--border);padding-bottom:8px;}
+
+    /* ── Form grid ── */
+    .fg{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:12px;}
+    .ff{display:flex;flex-direction:column;gap:3px;}
+    .ff label{font-size:12px;font-weight:600;color:var(--text);}
+    .ff input,.ff select,.ff textarea{padding:8px 10px;border:1px solid var(--border);border-radius:5px;font-size:13px;background:white;color:var(--text);outline:none;}
+    .ff input:focus,.ff select:focus,.ff textarea:focus{border-color:var(--primary);box-shadow:0 0 0 2px rgba(0,102,204,.12);}
+    .ff textarea{resize:vertical;min-height:60px;}
+
+    /* ── Filter row ── */
+    .frow{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;}
+    .frow .ff{min-width:130px;}
+    .ftotal{font-weight:700;color:var(--primary-dark);font-size:14px;padding:8px 0;}
+
+    /* ── Breakdown grid ── */
+    .brow{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;}
+    @media(max-width:600px){.brow{grid-template-columns:1fr;}.card-grid{grid-template-columns:1fr 1fr;}}
+
+    /* Chart container */
+    .chart-wrap{background:white;border:1px solid var(--border);border-radius:8px;padding:18px;margin-top:14px;box-shadow:0 2px 5px rgba(0,0,0,.05);}
+    .chart-wrap h3{margin:0 0 12px;color:var(--primary-dark);font-size:13px;font-weight:700;}
+
+    /* stat-card extra variants */
+    .stat-card.bank .sc-val{color:#0891b2;}
+    .stat-card.neto-neto .sc-val{color:#7c3aed;}
+
+    /* ── Cierre resultado ── */
+    .cierre-box{background:#f0f7ff;border:1.5px solid #bdd4f5;border-radius:8px;padding:16px;margin-top:12px;}
+    .cierre-box h4{font-size:13px;font-weight:700;color:var(--primary-dark);margin:0 0 10px;}
+
+    .btn-sm-danger{background:#dc2626;color:white;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;}
+    .btn-sm-danger:hover{opacity:.85;}
+    .placeholder-msg{color:var(--muted);font-style:italic;padding:10px 0;font-size:13px;}
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <img src="/images/logo.jpg" alt="Logo" class="app-logo">
+  <div class="app-title">
+    <div class="name">Droguería Salo Plus</div>
+    <div class="nit">NIT 1.049.647.310-5</div>
+  </div>
+</header>
+
+<nav style="margin:0;padding:10px 20px;">
+  <a href="/">Inventario</a>
+  <a href="/admin_ventas">Ventas</a>
+  <a href="/historial_ventas">Historial</a>
+  <a href="/admin_empaques">Empaques</a>
+  <a href="/reportes" style="background:var(--primary-dark);">Reportes / Caja</a>
+</nav>
+
+<div style="padding:0 20px 32px;">
+<h1 style="color:var(--primary-dark);font-size:20px;margin-bottom:14px;margin-top:16px;">Reportes &amp; Caja</h1>
+
+<!-- ── Tab bar ── -->
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="reportes">📊 Reportes</button>
+  <button class="tab-btn" data-tab="egresos">💸 Egresos</button>
+  <button class="tab-btn" data-tab="cierre">🏦 Cierre de Caja</button>
+</div>
+
+<!-- ══════════ TAB 1: REPORTES ══════════ -->
+<div class="tab-panel active" id="tab-reportes">
+
+  <div class="sec">
+    <h3>Generar reporte</h3>
+    <div style="display:flex;gap:6px;margin-bottom:14px;">
+      <button class="tab-btn active" data-subtab="diario" style="font-size:12px;padding:6px 14px;">Diario</button>
+      <button class="tab-btn" data-subtab="mensual" style="font-size:12px;padding:6px 14px;">Mensual</button>
+    </div>
+
+    <div id="subtab-diario" style="display:block;">
+      <div class="frow">
+        <div class="ff"><label>Fecha</label><input type="date" id="reporteFecha"></div>
+        <button onclick="verReporte('diario')">Ver reporte</button>
+      </div>
+    </div>
+    <div id="subtab-mensual" style="display:none;">
+      <div class="frow">
+        <div class="ff"><label>Mes</label><input type="month" id="reporteMes"></div>
+        <button onclick="verReporte('mensual')">Ver reporte</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="reporteResultado">
+    <p class="placeholder-msg">Seleccioná un período y hacé clic en "Ver reporte".</p>
+  </div>
+
+  <!-- Gráfico (se muestra tras cargar un reporte) -->
+  <div class="chart-wrap" id="chartWrap" style="display:none;">
+    <h3>Distribución del período</h3>
+    <canvas id="reporteChart" height="90"></canvas>
+  </div>
+</div>
+
+<!-- ══════════ TAB 2: EGRESOS ══════════ -->
+<div class="tab-panel" id="tab-egresos">
+
+  <div class="sec">
+    <h3>Registrar egreso</h3>
+    <form id="formEgreso" onsubmit="registrarEgreso(event)">
+      <div class="fg">
+        <div class="ff"><label>Concepto *</label><input type="text" name="concepto" required placeholder="Ej: Compra desinfectante"></div>
+        <div class="ff"><label>Monto *</label><input type="number" name="monto" step="0.01" min="0" required placeholder="0"></div>
+        <div class="ff">
+          <label>Tipo de egreso *</label>
+          <select name="tipo" required>
+            <option value="gasto_operativo">Gasto operativo</option>
+            <option value="pago_proveedor">Pago proveedor</option>
+            <option value="retiro">Retiro de caja</option>
+            <option value="servicio">Servicio</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+        <div class="ff">
+          <label>Tipo de pago *</label>
+          <select name="tipo_pago" required>
+            <option value="efectivo">Efectivo</option>
+            <option value="transferencia">Transferencia</option>
+          </select>
+        </div>
+        <div class="ff"><label>Fecha *</label><input type="date" name="fecha" id="egresoFecha" required></div>
+        <div class="ff" style="grid-column:span 2;"><label>Descripción</label><textarea name="descripcion" placeholder="Detalles adicionales..."></textarea></div>
+      </div>
+      <button type="submit">Registrar egreso</button>
+    </form>
+  </div>
+
+  <div class="sec">
+    <h3>Historial de egresos</h3>
+    <div class="frow">
+      <div class="ff"><label>Desde</label><input type="date" id="egresoDesde"></div>
+      <div class="ff"><label>Hasta</label><input type="date" id="egresoHasta"></div>
+      <button onclick="filtrarEgresos()">Filtrar</button>
+      <div class="ftotal" id="totalEgresos"></div>
+    </div>
+    <table>
+      <thead><tr><th>Fecha</th><th>Concepto</th><th>Tipo</th><th>Pago</th><th>Monto</th><th></th></tr></thead>
+      <tbody id="tablaEgresos"><tr><td colspan="6" style="color:var(--muted);font-style:italic;">Cargando...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════ TAB 3: CIERRE DE CAJA ══════════ -->
+<div class="tab-panel" id="tab-cierre">
+
+  <div class="sec">
+    <h3>Generar cierre</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">
+      El cierre calcula: <strong>ventas efectivo − egresos efectivo = neto en caja</strong>.<br>
+      Solo se permite un cierre por período. Las transferencias no afectan la caja física.
+    </p>
+    <form id="formCierre" onsubmit="generarCierre(event)">
+      <div class="fg">
+        <div class="ff"><label>Fecha inicio *</label><input type="date" id="cierreFechaInicio" name="fecha_inicio" required></div>
+        <div class="ff"><label>Fecha fin *</label><input type="date" id="cierreFechaFin" name="fecha_fin" required></div>
+        <div class="ff" style="grid-column:span 2;"><label>Observación</label><textarea name="observacion" placeholder="Notas del cierre..."></textarea></div>
+      </div>
+      <button type="submit">Generar cierre</button>
+    </form>
+    <div id="cierreResultado"></div>
+  </div>
+
+  <div class="sec">
+    <h3>Historial de cierres</h3>
+    <table>
+      <thead>
+        <tr><th>Registrado</th><th>Período</th><th>Ventas</th><th>Descuentos</th><th>Egresos</th><th>Neto caja</th><th>Obs.</th></tr>
+      </thead>
+      <tbody id="tablaCierres"><tr><td colspan="7" style="color:var(--muted);font-style:italic;">Cargando...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+</div><!-- /padding wrapper -->
+
+<div id="toast-container"></div>
+<script src="/static/script.js"></script>
+<script>
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function todayStr(){const d=new Date(),p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;}
+function monthStr(){const d=new Date(),p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}`;}
+function fmtM(n){return'$ '+Number(n||0).toLocaleString('es-CO',{minimumFractionDigits:0,maximumFractionDigits:0});}
+const TIPO_LABEL={gasto_operativo:'Gasto operativo',pago_proveedor:'Pago proveedor',retiro:'Retiro de caja',servicio:'Servicio',otro:'Otro'};
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-bar > .tab-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.tab-bar > .tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Sub-tabs (diario / mensual) ───────────────────────────────────────────────
+document.querySelectorAll('[data-subtab]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('[data-subtab]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('subtab-diario').style.display = btn.dataset.subtab==='diario'?'block':'none';
+    document.getElementById('subtab-mensual').style.display = btn.dataset.subtab==='mensual'?'block':'none';
+  });
+});
+
+// ── Default dates ─────────────────────────────────────────────────────────────
+(function(){
+  const t=todayStr(),m=monthStr();
+  document.getElementById('reporteFecha').value=t;
+  document.getElementById('reporteMes').value=m;
+  document.getElementById('egresoFecha').value=t;
+  document.getElementById('egresoDesde').value=t;
+  document.getElementById('egresoHasta').value=t;
+  document.getElementById('cierreFechaInicio').value=t;
+  document.getElementById('cierreFechaFin').value=t;
+})();
+
+// ── Chart instance ────────────────────────────────────────────────────────────
+let _chart = null;
+function renderChart(v, eg) {
+  const wrap = document.getElementById('chartWrap');
+  const ctx  = document.getElementById('reporteChart');
+  if(!ctx) return;
+  wrap.style.display = 'block';
+  if(_chart) _chart.destroy();
+  _chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Ventas', 'Egresos'],
+      datasets: [
+        { label:'Efectivo',       data:[v.efectivo||0,     eg.efectivo||0],     backgroundColor:'#0066cc' },
+        { label:'Transferencia',  data:[v.transferencia||0, eg.transferencia||0], backgroundColor:'#93c5fd' },
+      ]
+    },
+    options: {
+      responsive:true,
+      plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{ size:12 } } },
+                tooltip:{ callbacks:{ label: ctx => ' $'+Number(ctx.raw||0).toLocaleString('es-CO') } } },
+      scales:{
+        x:{ stacked:true },
+        y:{ stacked:true, beginAtZero:true,
+            ticks:{ callback: v => '$'+Number(v).toLocaleString('es-CO') } }
+      }
+    }
+  });
+}
+
+// ── Reporte ───────────────────────────────────────────────────────────────────
+async function verReporte(tipo) {
+  const val = tipo==='mensual'
+    ? document.getElementById('reporteMes').value
+    : document.getElementById('reporteFecha').value;
+  if(!val){showToast('Seleccioná un período','error');return;}
+  const el=document.getElementById('reporteResultado');
+  el.innerHTML='<p class="placeholder-msg">Cargando...</p>';
+  document.getElementById('chartWrap').style.display='none';
+  try{
+    const param = tipo==='mensual'?`mes=${encodeURIComponent(val)}`:`fecha=${encodeURIComponent(val)}`;
+    const res=await fetch(`/api/reportes?tipo=${tipo}&${param}`);
+    if(!res.ok) throw new Error((await res.json().catch(()=>({}))).error||'Error al cargar reporte');
+    const d=await res.json();
+    const v=d.ventas||{}, eg=d.egresos||{};
+
+    // Neto Bancario = ventas transferencia - egresos transferencia
+    const netoBancario = (v.transferencia||0) - (eg.transferencia||0);
+    // Neto Neto = todo: ventas - egresos (caja + banco)
+    const netoNeto     = (v.total||0) - (eg.total||0);
+
+    const egPorTipo = eg.por_tipo||{};
+    const egRows = Object.entries(egPorTipo).map(([k,val])=>
+      `<tr><td>${TIPO_LABEL[k]||k}</td><td style="text-align:right">${fmtM(val)}</td></tr>`).join('');
+
+    el.innerHTML=`
+      <div class="card-grid">
+        <div class="stat-card">
+          <div class="sc-label">Total ventas</div>
+          <div class="sc-val">${fmtM(v.total)}</div>
+          <small style="color:var(--muted)">${v.cantidad||0} transacciones</small>
+        </div>
+        <div class="stat-card purple">
+          <div class="sc-label">Descuentos aplicados</div>
+          <div class="sc-val">− ${fmtM(v.descuentos)}</div>
+        </div>
+        <div class="stat-card danger">
+          <div class="sc-label">Total egresos</div>
+          <div class="sc-val">${fmtM(eg.total)}</div>
+          <small style="color:var(--muted)">${eg.cantidad||0} registros</small>
+        </div>
+        <div class="stat-card success">
+          <div class="sc-label">Neto en caja</div>
+          <div class="sc-val">${fmtM(d.neto_caja)}</div>
+          <small style="color:var(--muted)">Ef. ventas − Ef. egresos</small>
+        </div>
+        <div class="stat-card bank">
+          <div class="sc-label">Neto bancario</div>
+          <div class="sc-val">${fmtM(netoBancario)}</div>
+          <small style="color:var(--muted)">Transf. ventas − Transf. egresos</small>
+        </div>
+        <div class="stat-card neto-neto">
+          <div class="sc-label">Neto neto</div>
+          <div class="sc-val">${fmtM(netoNeto)}</div>
+          <small style="color:var(--muted)">Caja + banco combinado</small>
+        </div>
+      </div>
+      <div class="brow">
+        <div class="sec" style="margin-bottom:0">
+          <h3>Ventas por tipo de pago</h3>
+          <table><thead><tr><th>Tipo</th><th>Monto</th></tr></thead><tbody>
+            <tr><td>Efectivo</td><td style="text-align:right">${fmtM(v.efectivo)}</td></tr>
+            <tr><td>Transferencia</td><td style="text-align:right">${fmtM(v.transferencia)}</td></tr>
+          </tbody></table>
+        </div>
+        <div class="sec" style="margin-bottom:0">
+          <h3>Egresos por tipo de pago</h3>
+          <table><thead><tr><th>Tipo</th><th>Monto</th></tr></thead><tbody>
+            <tr><td>Efectivo</td><td style="text-align:right">${fmtM(eg.efectivo)}</td></tr>
+            <tr><td>Transferencia</td><td style="text-align:right">${fmtM(eg.transferencia)}</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+      ${egRows?`<div class="sec" style="margin-top:14px"><h3>Egresos por tipo</h3><table><thead><tr><th>Tipo</th><th>Monto</th></tr></thead><tbody>${egRows}</tbody></table></div>`:''}`;
+
+    renderChart(v, eg);
+  }catch(e){el.innerHTML=`<p style="color:#dc2626">${e.message}</p>`; showToast(e.message,'error');}
+}
+
+// ── Egresos ───────────────────────────────────────────────────────────────────
+async function registrarEgreso(e) {
+  e.preventDefault();
+  const form=document.getElementById('formEgreso');
+  const fd=new FormData(form);
+  const payload={concepto:fd.get('concepto'),monto:parseFloat(fd.get('monto')||'0'),tipo:fd.get('tipo'),tipo_pago:fd.get('tipo_pago'),descripcion:fd.get('descripcion')||'',fecha:fd.get('fecha')};
+  if(!payload.concepto||!(payload.monto>0)){showToast('Concepto y monto requeridos','error');return;}
+  try{
+    const res=await fetch('/egresos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(!res.ok) throw new Error((await res.json().catch(()=>({}))).error||'Error');
+    showToast('Egreso registrado','success');
+    form.reset(); document.getElementById('egresoFecha').value=todayStr();
+    await filtrarEgresos();
+  }catch(err){showToast(err.message,'error');}
+}
+
+async function filtrarEgresos() {
+  const desde=document.getElementById('egresoDesde').value;
+  const hasta=document.getElementById('egresoHasta').value;
+  const tbody=document.getElementById('tablaEgresos');
+  const totalEl=document.getElementById('totalEgresos');
+  try{
+    let url='/egresos';
+    const p=new URLSearchParams();
+    if(desde)p.set('desde',desde);
+    if(hasta)p.set('hasta',hasta);
+    if(p.toString())url+='?'+p.toString();
+    const res=await fetch(url);
+    if(!res.ok) throw new Error('No se pudo cargar egresos');
+    const data=await res.json();
+    const egresos=Array.isArray(data)?data:(data.egresos||[]);
+    tbody.innerHTML='';
+    let total=0;
+    if(!egresos.length){
+      tbody.innerHTML='<tr><td colspan="6" style="color:var(--muted);font-style:italic;">Sin egresos en el período</td></tr>';
+      totalEl.textContent='';
+    }else{
+      egresos.forEach(eg=>{
+        total+=Number(eg.monto||0);
+        tbody.innerHTML+=`<tr>
+          <td>${(eg.fecha||'').substring(0,10)}</td>
+          <td>${eg.concepto||''}</td>
+          <td>${TIPO_LABEL[eg.tipo]||eg.tipo||''}</td>
+          <td style="text-transform:capitalize">${eg.tipo_pago||''}</td>
+          <td style="text-align:right;font-weight:700">${fmtM(eg.monto)}</td>
+          <td><button class="btn-sm-danger" onclick="eliminarEgreso(${eg.ID||eg.id})">Eliminar</button></td>
+        </tr>`;
+      });
+      totalEl.textContent=`Total: ${fmtM(total)}`;
+    }
+  }catch(err){tbody.innerHTML=`<tr><td colspan="6" style="color:#dc2626">${err.message}</td></tr>`;}
+}
+
+async function eliminarEgreso(id){
+  if(!confirm('¿Eliminar este egreso?'))return;
+  try{
+    const res=await fetch(`/egresos/${id}`,{method:'DELETE'});
+    if(!res.ok) throw new Error((await res.json().catch(()=>({}))).error||'Error');
+    showToast('Egreso eliminado','success');
+    await filtrarEgresos();
+  }catch(err){showToast(err.message,'error');}
+}
+
+// ── Cierre de Caja ────────────────────────────────────────────────────────────
+async function generarCierre(e){
+  e.preventDefault();
+  const fd=new FormData(document.getElementById('formCierre'));
+  const payload={fecha_inicio:fd.get('fecha_inicio'),fecha_fin:fd.get('fecha_fin'),observacion:fd.get('observacion')||''};
+  if(!payload.fecha_inicio||!payload.fecha_fin){showToast('Completá las fechas del período','error');return;}
+  const el=document.getElementById('cierreResultado');
+  el.innerHTML='<p class="placeholder-msg">Generando cierre...</p>';
+  try{
+    const res=await fetch('/cierres',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.error||'Error');}
+    const c=await res.json();
+    el.innerHTML=`
+      <div class="cierre-box">
+        <h4>Cierre registrado — #${c.ID||''}</h4>
+        <div class="card-grid">
+          <div class="stat-card"><div class="sc-label">Ventas efectivo</div><div class="sc-val">${fmtM(c.total_ventas_efectivo)}</div></div>
+          <div class="stat-card"><div class="sc-label">Ventas transf.</div><div class="sc-val">${fmtM(c.total_ventas_transferencia)}</div></div>
+          <div class="stat-card purple"><div class="sc-label">Descuentos</div><div class="sc-val">− ${fmtM(c.total_descuentos)}</div></div>
+          <div class="stat-card danger"><div class="sc-label">Egresos efectivo</div><div class="sc-val">− ${fmtM(c.total_egresos_efectivo)}</div></div>
+          <div class="stat-card danger"><div class="sc-label">Egresos transf.</div><div class="sc-val">− ${fmtM(c.total_egresos_transferencia)}</div></div>
+          <div class="stat-card success"><div class="sc-label">Neto en caja</div><div class="sc-val">${fmtM(c.neto_caja)}</div><small style="color:rgba(255,255,255,.7)">Ef. ventas − Ef. egresos</small></div>
+          <div class="stat-card bank"><div class="sc-label">Neto bancario</div><div class="sc-val">${fmtM(c.total_ventas_transferencia - c.total_egresos_transferencia)}</div><small style="color:var(--muted)">Transf. ventas − Transf. egresos</small></div>
+          <div class="stat-card neto-neto"><div class="sc-label">Neto neto</div><div class="sc-val">${fmtM(c.total_ventas - c.total_egresos)}</div><small style="color:var(--muted)">Caja + banco combinado</small></div>
+        </div>
+      </div>`;
+    showToast('Cierre generado correctamente','success');
+    await cargarCierres();
+  }catch(err){
+    el.innerHTML=`<p style="color:#dc2626;padding:8px 0">${err.message}</p>`;
+    showToast(err.message,'error');
+  }
+}
+
+async function cargarCierres(){
+  const tbody=document.getElementById('tablaCierres');
+  try{
+    const res=await fetch('/cierres');
+    if(!res.ok) throw new Error('Error');
+    const cierres=await res.json();
+    tbody.innerHTML='';
+    if(!cierres.length){tbody.innerHTML='<tr><td colspan="7" style="color:var(--muted);font-style:italic;">Sin cierres registrados</td></tr>';return;}
+    cierres.forEach(c=>{
+      const fi=(c.fecha_inicio||'').substring(0,10);
+      const ff=(c.fecha_fin||'').substring(0,10);
+      const reg=(c.CreatedAt||c.created_at||'').substring(0,10);
+      tbody.innerHTML+=`<tr>
+        <td>${reg}</td>
+        <td>${fi} → ${ff}</td>
+        <td style="text-align:right">${fmtM(c.total_ventas)}</td>
+        <td style="text-align:right;color:#7c3aed">− ${fmtM(c.total_descuentos)}</td>
+        <td style="text-align:right;color:#dc2626">− ${fmtM(c.total_egresos)}</td>
+        <td style="text-align:right;font-weight:800;color:#16a34a">${fmtM(c.neto_caja)}</td>
+        <td style="font-size:12px;color:var(--muted)">${c.observacion||'—'}</td>
+      </tr>`;
+    });
+  }catch(err){tbody.innerHTML=`<tr><td colspan="7" style="color:#dc2626">${err.message}</td></tr>`;}
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded',async()=>{
+  await filtrarEgresos();
+  await cargarCierres();
+  // auto cargar reporte de hoy
+  verReporte('diario');
+});
+</script>
+</body>
+</html>
