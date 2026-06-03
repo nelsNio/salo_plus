@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -50,13 +51,22 @@ func main() {
 	}
 	log.Println("Migración completada correctamente.")
 
-	// migrar modelos (productos/ventas/items/counters/empaques/producto_empaques)
-	if err := db.AutoMigrate(&models.Producto{}, &models.Venta{}, &models.Item{}, &models.Counter{}, &models.Empaque{}, &models.ProductoEmpaque{}); err != nil {
+	// migrar modelos (productos/ventas/items/counters/empaques/producto_empaques/egresos/cierres)
+	if err := db.AutoMigrate(&models.Producto{}, &models.Venta{}, &models.Item{}, &models.Counter{}, &models.Empaque{}, &models.ProductoEmpaque{}, &models.Egreso{}, &models.CierreCaja{}); err != nil {
 		panic(err)
 	}
 	// Limpieza: eliminamos manejo legado de SKU/Lote. Si existen columnas antiguas en BD, puedes borrarlas manualmente.
 
 	r := gin.Default()
+
+	r.Use(gzip.Gzip(gzip.DefaultCompression))
+	r.Use(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if strings.HasPrefix(path, "/static/") || strings.HasPrefix(path, "/images/") {
+			c.Header("Cache-Control", "public, max-age=86400")
+		}
+		c.Next()
+	})
 
 	// servir assets (pon tu static y templates en esas carpetas)
 	r.Static("/static", "./static") // Sirve archivos estáticos en /static/*
@@ -99,10 +109,12 @@ func main() {
 	r.POST("/ventas/lote", func(c *gin.Context) {
 		// payload esperado
 		type item struct {
-			ProductoID       uint `json:"producto_id"`
-			Cantidad         int  `json:"cantidad"`          // unidades base (si no se usa empaque)
-			EmpaqueID        uint `json:"empaque_id"`        // opcional
-			CantidadEmpaques int  `json:"cantidad_empaques"` // opcional, usado si EmpaqueID > 0
+			ProductoID       uint    `json:"producto_id"`
+			Cantidad         int     `json:"cantidad"`          // unidades base (si no se usa empaque)
+			EmpaqueID        uint    `json:"empaque_id"`        // opcional
+			CantidadEmpaques int     `json:"cantidad_empaques"` // opcional, usado si EmpaqueID > 0
+			Descuento        float64 `json:"descuento"`
+			DescuentoPct     float64 `json:"descuento_pct"`
 		}
 		type payload struct {
 			Fecha    string `json:"fecha"` // ISO opcional
@@ -144,8 +156,10 @@ func main() {
 
 		// Validar stock y calcular total (con soporte de empaques)
 		var total float64
-		precios := make(map[uint]float64) // precio unitario efectivo por ProductoID
-		cantidades := make(map[uint]int)  // cantidad en unidades base por ProductoID (sumada por si repite)
+		precios    := make(map[uint]float64) // precio unitario efectivo por ProductoID
+		cantidades := make(map[uint]int)     // cantidad en unidades base por ProductoID (sumada por si repite)
+		descuentos := make(map[uint]float64)
+		descPcts   := make(map[uint]float64)
 		for _, it := range in.Items {
 			var p models.Producto
 			if err := tx.First(&p, it.ProductoID).Error; err != nil {
@@ -178,15 +192,25 @@ func main() {
 			}
 			precios[it.ProductoID] = precioUnit
 			cantidades[it.ProductoID] += unidades
-			total += float64(unidades) * precioUnit
+			descuentos[it.ProductoID] += it.Descuento
+			descPcts[it.ProductoID] = it.DescuentoPct
+			neto := float64(unidades)*precioUnit - it.Descuento
+			total += neto
+		}
+
+		// Calcular total descuentos
+		var totalDescuentos float64
+		for _, d := range descuentos {
+			totalDescuentos += d
 		}
 
 		// Construir venta con items
 		venta := models.Venta{
-			Fecha:    fecha,
-			TipoPago: in.TipoPago,
-			Folio:    folioLote,
-			Total:    total,
+			Fecha:           fecha,
+			TipoPago:        in.TipoPago,
+			Folio:           folioLote,
+			Total:           total,
+			TotalDescuentos: totalDescuentos,
 		}
 		venta.Items = make([]models.Item, 0, len(cantidades))
 		for pid, unidades := range cantidades {
@@ -194,6 +218,8 @@ func main() {
 				ProductoID:     pid,
 				Cantidad:       unidades,
 				PrecioUnitario: precios[pid],
+				Descuento:      descuentos[pid],
+				DescuentoPct:   descPcts[pid],
 			})
 		}
 
@@ -233,10 +259,11 @@ func main() {
 		}
 
 		c.JSON(http.StatusCreated, gin.H{
-			"venta":      venta,
-			"total":      total,
-			"fecha":      fecha,
-			"folio_lote": folioLote,
+			"venta":            venta,
+			"total":            total,
+			"fecha":            fecha,
+			"folio_lote":       folioLote,
+			"total_descuentos": totalDescuentos,
 		})
 	})
 
@@ -255,8 +282,27 @@ func main() {
 	})
 
 	// -------------------- Productos --------------------
-	// GET /productos con paginación opcional (?page=&size=)
+	// GET /productos con paginación opcional (?page=&size=) o versión lite (?lite=true)
 	r.GET("/productos", func(c *gin.Context) {
+		// Versión ligera para el buscador de ventas: sin Preload, solo campos de búsqueda
+		if c.Query("lite") == "true" {
+			type ProductoLite struct {
+				ID             uint    `json:"ID"`
+				Nombre         string  `json:"nombre"`
+				Laboratorio    string  `json:"laboratorio"`
+				Presentacion   string  `json:"presentacion"`
+				PrecioUnitario float64 `json:"precio_unitario"`
+				Cantidad       int     `json:"cantidad"`
+				CodigoBarras   string  `json:"codigo_barras"`
+			}
+			var productos []ProductoLite
+			db.Model(&models.Producto{}).
+				Select("id, nombre, laboratorio, presentacion, precio_unitario, cantidad, codigo_barras").
+				Order("id desc").
+				Find(&productos)
+			c.JSON(http.StatusOK, productos)
+			return
+		}
 		pageStr := c.Query("page")
 		sizeStr := c.Query("size")
 		if pageStr != "" && sizeStr != "" {
@@ -390,6 +436,236 @@ func main() {
 			return
 		}
 		c.Status(http.StatusNoContent)
+	})
+
+	// -------------------- Egresos --------------------
+	r.POST("/egresos", func(c *gin.Context) {
+		var e models.Egreso
+		if err := c.ShouldBindJSON(&e); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if e.Fecha.IsZero() {
+			e.Fecha = time.Now()
+		}
+		if err := db.Create(&e).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, e)
+	})
+
+	r.GET("/egresos", func(c *gin.Context) {
+		desde := c.Query("desde")
+		hasta := c.Query("hasta")
+		query := db.Model(&models.Egreso{}).Order("fecha desc")
+		parseDayUTC := func(s string, endOfDay bool) (time.Time, bool) {
+			t, err := time.ParseInLocation("2006-01-02", s, bogotaLoc)
+			if err != nil {
+				return time.Time{}, false
+			}
+			if endOfDay {
+				t = t.Add(24 * time.Hour)
+			}
+			return t.UTC(), true
+		}
+		if desde != "" {
+			if t, ok := parseDayUTC(desde, false); ok {
+				query = query.Where("fecha >= ?", t)
+			}
+		}
+		if hasta != "" {
+			if t, ok := parseDayUTC(hasta, true); ok {
+				query = query.Where("fecha < ?", t)
+			}
+		}
+		var egresos []models.Egreso
+		if err := query.Find(&egresos).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		var total float64
+		for _, e := range egresos {
+			total += e.Monto
+		}
+		c.JSON(http.StatusOK, gin.H{"egresos": egresos, "total": total})
+	})
+
+	r.DELETE("/egresos/:id", func(c *gin.Context) {
+		if err := db.Delete(&models.Egreso{}, c.Param("id")).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	// -------------------- Cierres de Caja --------------------
+	r.POST("/cierres", func(c *gin.Context) {
+		var in struct {
+			FechaInicio string `json:"fecha_inicio"`
+			FechaFin    string `json:"fecha_fin"`
+			Observacion string `json:"observacion"`
+		}
+		if err := c.ShouldBindJSON(&in); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		parseDay := func(s string, endOfDay bool) (time.Time, error) {
+			t, err := time.ParseInLocation("2006-01-02", s, bogotaLoc)
+			if err != nil {
+				return time.Time{}, err
+			}
+			if endOfDay {
+				t = t.Add(24 * time.Hour)
+			}
+			return t.UTC(), nil
+		}
+		inicio, err1 := parseDay(in.FechaInicio, false)
+		fin, err2 := parseDay(in.FechaFin, true)
+		if err1 != nil || err2 != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Fechas inválidas (formato YYYY-MM-DD)"})
+			return
+		}
+
+		// Verificar que no exista ya un cierre para el mismo período
+		var existente int64
+		db.Model(&models.CierreCaja{}).Where("fecha_inicio = ? AND fecha_fin = ?", inicio, fin).Count(&existente)
+		if existente > 0 {
+			c.JSON(http.StatusConflict, gin.H{"error": "Ya existe un cierre para este período. Revisá el historial de cierres."})
+			return
+		}
+
+		// Ventas del período
+		var ventas []models.Venta
+		db.Where("fecha >= ? AND fecha < ?", inicio, fin).Find(&ventas)
+		var totalVentasEf, totalVentasTr, totalVentas, totalDescuentos float64
+		for _, v := range ventas {
+			totalVentas += v.Total
+			totalDescuentos += v.TotalDescuentos
+			if v.TipoPago == "efectivo" {
+				totalVentasEf += v.Total
+			} else {
+				totalVentasTr += v.Total
+			}
+		}
+
+		// Egresos del período
+		var egresos []models.Egreso
+		db.Where("fecha >= ? AND fecha < ?", inicio, fin).Find(&egresos)
+		var totalEgEf, totalEgTr, totalEg float64
+		for _, e := range egresos {
+			totalEg += e.Monto
+			if e.TipoPago == "efectivo" {
+				totalEgEf += e.Monto
+			} else {
+				totalEgTr += e.Monto
+			}
+		}
+
+		cierre := models.CierreCaja{
+			FechaInicio:               inicio,
+			FechaFin:                  fin,
+			TotalVentasEfectivo:       totalVentasEf,
+			TotalVentasTransferencia:  totalVentasTr,
+			TotalVentas:               totalVentas,
+			TotalDescuentos:           totalDescuentos,
+			TotalEgresosEfectivo:      totalEgEf,
+			TotalEgresosTransferencia: totalEgTr,
+			TotalEgresos:              totalEg,
+			NetoCaja:                  totalVentasEf - totalEgEf,
+			Observacion:               in.Observacion,
+		}
+		if err := db.Create(&cierre).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, cierre)
+	})
+
+	r.GET("/cierres", func(c *gin.Context) {
+		var cierres []models.CierreCaja
+		if err := db.Order("created_at desc").Limit(50).Find(&cierres).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, cierres)
+	})
+
+	// -------------------- Reportes --------------------
+	r.GET("/api/reportes", func(c *gin.Context) {
+		tipo  := c.DefaultQuery("tipo", "diario")
+		fecha := c.Query("fecha") // YYYY-MM-DD para diario
+		mes   := c.Query("mes")   // YYYY-MM para mensual
+
+		var inicio, fin time.Time
+		parseDay := func(s string, endOfDay bool) (time.Time, error) {
+			t, err := time.ParseInLocation("2006-01-02", s, bogotaLoc)
+			if err != nil {
+				return time.Time{}, err
+			}
+			if endOfDay {
+				t = t.Add(24 * time.Hour)
+			}
+			return t.UTC(), nil
+		}
+
+		if tipo == "mensual" && mes != "" {
+			t, err := time.ParseInLocation("2006-01", mes, bogotaLoc)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Mes inválido"})
+				return
+			}
+			inicio = t.UTC()
+			fin = t.AddDate(0, 1, 0).UTC()
+		} else {
+			dia := fecha
+			if dia == "" {
+				dia = time.Now().In(bogotaLoc).Format("2006-01-02")
+			}
+			var err error
+			inicio, err = parseDay(dia, false)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Fecha inválida"})
+				return
+			}
+			fin, _ = parseDay(dia, true)
+		}
+
+		// Ventas
+		var ventas []models.Venta
+		db.Where("fecha >= ? AND fecha < ?", inicio, fin).Find(&ventas)
+		var totalVentas, totalDesc, totalEf, totalTr float64
+		for _, v := range ventas {
+			totalVentas += v.Total
+			totalDesc += v.TotalDescuentos
+			if v.TipoPago == "efectivo" {
+				totalEf += v.Total
+			} else {
+				totalTr += v.Total
+			}
+		}
+
+		// Egresos
+		var egresos []models.Egreso
+		db.Where("fecha >= ? AND fecha < ?", inicio, fin).Find(&egresos)
+		tipoEgreso := make(map[string]float64)
+		var totalEg, totalEgEf, totalEgTr float64
+		for _, e := range egresos {
+			totalEg += e.Monto
+			tipoEgreso[e.Tipo] += e.Monto
+			if e.TipoPago == "efectivo" {
+				totalEgEf += e.Monto
+			} else {
+				totalEgTr += e.Monto
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"periodo":              gin.H{"inicio": inicio, "fin": fin, "tipo": tipo},
+			"ventas":               gin.H{"total": totalVentas, "descuentos": totalDesc, "efectivo": totalEf, "transferencia": totalTr, "cantidad": len(ventas)},
+			"egresos":              gin.H{"total": totalEg, "efectivo": totalEgEf, "transferencia": totalEgTr, "por_tipo": tipoEgreso, "cantidad": len(egresos)},
+			"neto_caja":            totalEf - totalEg,
+		})
 	})
 
 	// -------------------- Empaques --------------------
@@ -742,6 +1018,10 @@ func main() {
 	// Ruta para la página de gestión de empaques
 	r.GET("/admin_empaques", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "admin_empaques.html", nil)
+	})
+
+	r.GET("/reportes", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "reportes.html", nil)
 	})
 
 	// Usar PORT de entorno (Render/Railway/etc.)

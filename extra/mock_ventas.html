@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Mock v2 — Ventas · Droguería Salo Plus</title>
+<style>
+:root {
+  --primary: #0066cc; --primary-dark: #004b99; --accent: #ffcc00;
+  --bg: #f7f9fc; --text: #1f2937; --muted: #6b7280; --border: #e5e7eb;
+  --success-bg: #dcfce7; --success: #16a34a;
+  --danger-bg: #fee2e2; --danger: #dc2626;
+  --warn: #f57f17; --discount: #7c3aed;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:var(--bg);color:var(--text);}
+
+/* Header / Nav */
+.app-header{display:flex;align-items:center;gap:12px;background:white;padding:12px 24px;border-bottom:2px solid var(--primary);box-shadow:0 2px 6px rgba(0,0,0,.07);}
+.app-title .name{font-weight:700;font-size:18px;color:var(--primary-dark);}
+.app-title .nit{font-size:12px;color:var(--muted);}
+nav{display:flex;gap:10px;padding:10px 24px;background:white;border-bottom:1px solid var(--border);}
+nav a{background:var(--primary);color:white;padding:6px 14px;text-decoration:none;border-radius:4px;font-size:13px;}
+nav a:hover{background:var(--primary-dark);}
+
+/* Layout */
+.page{padding:16px 24px;}
+h1{font-size:19px;color:var(--primary-dark);margin-bottom:2px;}
+.page-sub{color:var(--muted);font-size:12px;margin-bottom:14px;}
+.ventas-layout{display:grid;grid-template-columns:1fr 380px;gap:18px;align-items:start;}
+
+/* Panel */
+.panel{background:white;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;}
+.panel-header{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.panel-header h2{font-size:14px;font-weight:700;color:var(--primary-dark);}
+.panel-body{padding:16px 18px;}
+
+/* Search */
+.search-wrap{position:relative;margin-bottom:12px;}
+.search-wrap input{width:100%;padding:10px 12px 10px 36px;border:1.5px solid var(--border);border-radius:7px;font-size:14px;outline:none;transition:border-color .15s,box-shadow .15s;}
+.search-wrap input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(0,102,204,.12);}
+.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:15px;pointer-events:none;}
+
+/* Product table */
+.prod-table-wrap{border:1px solid var(--border);border-radius:7px;overflow:hidden;margin-bottom:14px;}
+.prod-table{width:100%;border-collapse:collapse;font-size:13px;}
+.prod-table thead th{background:var(--primary);color:white;padding:8px 10px;text-align:left;font-weight:600;font-size:12px;white-space:nowrap;}
+.prod-table tbody tr{cursor:pointer;transition:background .1s;}
+.prod-table tbody tr:not(.selected):hover{background:#f0f7ff;}
+.prod-table tbody tr.selected{background:#dbeafe;outline:2px solid var(--primary);outline-offset:-1px;}
+.prod-table tbody td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.prod-table tbody tr:last-child td{border-bottom:none;}
+.prod-table .td-nombre{font-weight:600;max-width:160px;}
+.prod-table .td-precio{font-weight:700;color:var(--primary-dark);white-space:nowrap;}
+.stock-chip{display:inline-block;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;}
+.stock-ok{background:var(--success-bg);color:var(--success);}
+.stock-low{background:#fff7e0;color:var(--warn);}
+.stock-none{background:var(--danger-bg);color:var(--danger);}
+.prod-empty{text-align:center;padding:20px;color:var(--muted);font-size:13px;}
+
+/* Selected product bar */
+.selected-bar{display:none;background:#f0f7ff;border:1.5px solid #bdd4f5;border-radius:8px;padding:10px 14px;margin-bottom:14px;gap:12px;align-items:center;}
+.selected-bar.show{display:flex;}
+.sel-name{font-weight:700;font-size:14px;color:var(--primary-dark);}
+.sel-meta{font-size:12px;color:var(--muted);margin-top:2px;}
+.sel-price{margin-left:auto;text-align:right;flex-shrink:0;}
+.sel-price .pv{font-size:19px;font-weight:800;color:var(--primary-dark);}
+.sel-price .pl{font-size:11px;color:var(--muted);}
+
+/* Empaque row */
+.empaque-row{display:none;background:#fffbea;border:1px solid #ffe082;border-radius:6px;padding:9px 12px;margin-bottom:12px;gap:10px;align-items:center;flex-wrap:wrap;}
+.empaque-row.show{display:flex;}
+.empaque-row label{font-size:12px;font-weight:700;color:var(--warn);white-space:nowrap;}
+.empaque-row select{flex:1;min-width:150px;padding:7px 9px;border:1px solid #ffe082;border-radius:5px;font-size:13px;outline:none;}
+.empaque-row select:focus{border-color:var(--warn);}
+.emp-info{font-size:12px;color:#666;}
+
+/* Qty + add row */
+.qty-add-row{display:flex;gap:10px;align-items:flex-end;}
+.qty-field{flex:1;}
+.qty-field label{display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}
+.qty-field input{width:100%;padding:12px;border:1.5px solid var(--border);border-radius:7px;font-size:22px;font-weight:800;text-align:center;outline:none;transition:border-color .15s,box-shadow .15s;}
+.qty-field input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(0,102,204,.12);}
+.btn-add-cart{flex-shrink:0;background:var(--primary);color:white;border:none;border-radius:7px;padding:13px 20px;font-size:14px;font-weight:700;cursor:pointer;transition:background .15s;white-space:nowrap;}
+.btn-add-cart:hover{background:var(--primary-dark);}
+
+/* Hint bar */
+.hint-bar{display:flex;gap:12px;flex-wrap:wrap;background:#f9fafb;border:1px solid var(--border);border-radius:6px;padding:7px 12px;margin-top:10px;}
+.hint-item{font-size:11px;color:var(--muted);display:flex;gap:4px;align-items:center;}
+.kbd{display:inline-block;background:#f3f4f6;border:1px solid #d1d5db;border-bottom-width:2px;border-radius:3px;padding:1px 5px;font-size:11px;font-family:monospace;color:#374151;}
+
+/* ── CART ── */
+.cart-header-row{display:flex;align-items:center;gap:7px;}
+.cart-badge{background:var(--accent);color:var(--primary-dark);border-radius:50%;width:20px;height:20px;font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;}
+.cart-badge.show{display:inline-flex;}
+.cart-empty{text-align:center;padding:28px 16px;color:var(--muted);border:2px dashed var(--border);border-radius:8px;font-size:13px;}
+.cart-items{display:flex;flex-direction:column;gap:5px;}
+
+.cart-item{border:1px solid var(--border);border-radius:8px;background:white;overflow:hidden;transition:border-color .15s;}
+.cart-item:hover{border-color:#bdd4f5;}
+.cart-item.has-discount{border-color:#c4b5fd;background:#faf5ff;}
+
+/* Top row: name + delete */
+.ci-top{display:flex;align-items:flex-start;gap:6px;padding:8px 10px 4px;}
+.ci-name{font-size:13px;font-weight:700;color:var(--text);flex:1;word-break:break-word;line-height:1.3;}
+
+/* Bottom row: qty controls + price + discount + subtotal */
+.ci-bottom{display:flex;align-items:center;gap:6px;padding:4px 10px 8px;flex-wrap:wrap;}
+.ci-qty-wrap{display:flex;align-items:center;gap:3px;}
+.qty-btn{width:22px;height:22px;border-radius:4px;border:1px solid var(--border);background:#f3f4f6;cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;color:var(--primary);padding:0;transition:background .1s;}
+.qty-btn:hover{background:#e8f0fc;border-color:var(--primary);}
+.ci-qty{width:40px;text-align:center;font-size:13px;font-weight:700;border:1.5px solid transparent;border-radius:5px;padding:2px 3px;cursor:pointer;outline:none;background:transparent;transition:border-color .15s,background .15s;}
+.ci-qty:hover{border-color:var(--border);background:white;}
+.ci-qty:focus{border-color:var(--primary);background:white;box-shadow:0 0 0 2px rgba(0,102,204,.12);}
+.ci-unit-price{font-size:11px;color:var(--muted);white-space:nowrap;}
+.ci-subtotal{margin-left:auto;font-size:13px;font-weight:800;color:var(--primary-dark);white-space:nowrap;}
+.ci-original{font-size:10px;color:var(--muted);text-decoration:line-through;text-align:right;}
+
+/* Discount */
+.ci-btn-disc{background:none;border:1px solid #c4b5fd;color:var(--discount);border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700;cursor:pointer;transition:all .1s;white-space:nowrap;}
+.ci-btn-disc:hover,.ci-btn-disc.active{background:var(--discount);color:white;border-color:var(--discount);}
+.ci-btn-del{background:none;border:1px solid var(--border);color:var(--muted);border-radius:4px;padding:2px 6px;font-size:12px;cursor:pointer;transition:all .1s;flex-shrink:0;}
+.ci-btn-del:hover{background:var(--danger-bg);border-color:var(--danger);color:var(--danger);}
+
+.ci-disc-row{display:none;padding:5px 10px 8px;border-top:1px dashed #c4b5fd;background:#f5f3ff;}
+.ci-disc-row.open{display:flex;gap:7px;align-items:center;flex-wrap:wrap;}
+.disc-toggle{display:flex;border:1px solid #c4b5fd;border-radius:5px;overflow:hidden;flex-shrink:0;}
+.disc-tbtn{padding:3px 9px;font-size:12px;font-weight:700;cursor:pointer;border:none;background:white;color:var(--muted);transition:all .1s;}
+.disc-tbtn.active{background:var(--discount);color:white;}
+.disc-input-wrap{display:flex;align-items:center;gap:3px;flex:1;min-width:90px;}
+.disc-input-wrap input{width:60px;padding:3px 6px;border:1.5px solid #c4b5fd;border-radius:5px;font-size:13px;font-weight:700;text-align:center;outline:none;color:var(--discount);}
+.disc-input-wrap input:focus{border-color:var(--discount);box-shadow:0 0 0 2px rgba(124,58,237,.15);}
+.disc-unit{font-size:12px;color:var(--discount);font-weight:600;}
+.disc-result{font-size:11px;color:var(--discount);font-weight:700;margin-left:auto;}
+.disc-clear{font-size:11px;color:var(--muted);cursor:pointer;background:none;border:none;padding:1px 4px;}
+.disc-clear:hover{color:var(--danger);}
+
+/* Total box */
+.cart-total-box{background:var(--primary-dark);color:white;border-radius:10px;padding:15px 18px;text-align:center;margin-top:12px;}
+.cart-total-box .lbl{font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.5px;}
+.cart-total-box .amt{font-size:34px;font-weight:800;line-height:1.1;margin-top:3px;}
+.cart-total-box .savings{font-size:12px;color:#a5f3fc;margin-top:3px;display:none;}
+.cart-total-box .savings.show{display:block;}
+.cart-total-box .cnt{font-size:12px;opacity:.65;margin-top:3px;}
+.cart-actions{display:flex;flex-direction:column;gap:7px;margin-top:10px;}
+.cart-actions button{width:100%;padding:12px;border:none;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:6px;}
+.btn-confirm{background:var(--success);color:white;}
+.btn-confirm:hover{background:#15803d;}
+.btn-print{background:white;color:var(--primary);border:1.5px solid var(--primary)!important;}
+.btn-print:hover{background:#e8f0fc;}
+
+/* Historial stats */
+.hist-box{background:white;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:14px 20px;margin-top:16px;display:flex;gap:28px;flex-wrap:wrap;}
+.hist-stat label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;display:block;}
+.hist-stat .val{font-size:20px;font-weight:800;color:var(--primary-dark);}
+
+/* ════════════════════════════════════
+   CONFIRMATION DIALOG
+   ════════════════════════════════════ */
+.dialog-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;align-items:center;justify-content:center;}
+.dialog-overlay.open{display:flex;}
+.dialog{background:white;border-radius:14px;padding:28px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.2);animation:dialogIn .2s ease;}
+@keyframes dialogIn{from{opacity:0;transform:scale(.94) translateY(-8px);}to{opacity:1;transform:scale(1) translateY(0);}}
+.dialog h3{font-size:17px;font-weight:800;color:var(--primary-dark);margin-bottom:4px;}
+.dialog .dlg-sub{font-size:13px;color:var(--muted);margin-bottom:18px;}
+
+/* Cart summary in dialog */
+.dlg-summary{background:#f7f9fc;border-radius:8px;padding:10px 14px;margin-bottom:18px;border:1px solid var(--border);}
+.dlg-summary-row{display:flex;justify-content:space-between;font-size:13px;padding:2px 0;}
+.dlg-summary-row.total-row{font-weight:800;font-size:16px;color:var(--primary-dark);border-top:1px solid var(--border);margin-top:6px;padding-top:6px;}
+
+/* Date field */
+.dlg-field{margin-bottom:16px;}
+.dlg-field label{display:block;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;}
+.dlg-field input{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px;outline:none;}
+.dlg-field input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(0,102,204,.12);}
+
+/* Payment toggle */
+.pago-row{display:flex;gap:8px;margin-bottom:16px;}
+.pago-btn{flex:1;padding:10px;border-radius:7px;font-size:13px;font-weight:700;border:1.5px solid var(--border);background:white;cursor:pointer;text-align:center;color:var(--muted);transition:all .15s;}
+.pago-btn.active{border-color:var(--primary);background:#e8f0fc;color:var(--primary);}
+
+/* Cash change calculator */
+.cash-calc{background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:8px;padding:14px 16px;margin-bottom:16px;}
+.cash-calc label{font-size:12px;font-weight:700;color:var(--success);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px;}
+.cash-row{display:flex;align-items:center;gap:10px;}
+.cash-row input{flex:1;padding:10px 12px;border:1.5px solid #bbf7d0;border-radius:7px;font-size:18px;font-weight:800;outline:none;color:var(--success);}
+.cash-row input:focus{border-color:var(--success);box-shadow:0 0 0 3px rgba(22,163,74,.15);}
+.vueltas-box{margin-top:10px;display:flex;justify-content:space-between;align-items:center;}
+.vueltas-label{font-size:13px;color:var(--muted);}
+.vueltas-val{font-size:22px;font-weight:800;color:var(--success);}
+.vueltas-val.negative{color:var(--danger);}
+.vueltas-val.exact{color:var(--primary);}
+
+/* Dialog buttons */
+.dlg-actions{display:flex;gap:10px;margin-top:4px;}
+.dlg-actions button{flex:1;padding:12px;border:none;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;transition:background .15s;}
+.dlg-cancel{background:#f3f4f6;color:var(--text);}
+.dlg-cancel:hover{background:var(--border);}
+.dlg-ok{background:var(--success);color:white;}
+.dlg-ok:hover{background:#15803d;}
+
+/* Toast */
+#toast-container{position:fixed;top:14px;right:14px;display:flex;flex-direction:column;gap:7px;z-index:9999;}
+.toast{padding:10px 15px;border-radius:7px;color:white;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.15);cursor:pointer;max-width:290px;animation:fadeIn .2s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-5px);}to{opacity:1;transform:translateY(0);}}
+.toast-success{background:#16a34a;} .toast-error{background:#dc2626;} .toast-info{background:var(--primary);}
+
+.mock-badge{position:fixed;bottom:14px;left:14px;background:#7c3aed;color:white;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.2);z-index:999;}
+</style>
+</head>
+<body>
+<div class="mock-badge">MOCK v2 — sólo UI</div>
+
+<header class="app-header">
+  <div style="width:46px;height:46px;background:var(--primary);border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:17px;">S+</div>
+  <div class="app-title">
+    <div class="name">Droguería Salo Plus</div>
+    <div class="nit">NIT 1.049.647.310-5</div>
+  </div>
+</header>
+
+<nav>
+  <a href="#">Inventario</a>
+  <a href="#" style="background:var(--primary-dark);">Ventas</a>
+  <a href="#">Empaques</a>
+  <a href="#">Historial</a>
+</nav>
+
+<div class="page">
+  <h1>Administración de Ventas</h1>
+  <p class="page-sub">Seleccioná un producto de la tabla · <span class="kbd">Enter</span> agrega al carrito · <span class="kbd">Ctrl+Enter</span> confirma la venta</p>
+
+  <div class="ventas-layout">
+
+    <!-- ── FORMULARIO IZQUIERDA ── -->
+    <div>
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Seleccionar producto</h2>
+          <button style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;" id="btnLimpiar">Limpiar <span class="kbd">Esc</span></button>
+        </div>
+        <div class="panel-body">
+
+          <!-- Search -->
+          <div class="search-wrap">
+            <span class="search-icon">&#128269;</span>
+            <input id="buscar" type="text" placeholder="Filtrar por nombre o laboratorio..." autocomplete="off" autofocus>
+          </div>
+
+          <!-- Placeholder: visible hasta que el usuario escriba -->
+          <div id="prodPlaceholder" style="text-align:center;padding:28px 16px;border:2px dashed var(--border);border-radius:8px;color:var(--muted);margin-bottom:14px;font-size:13px;">
+            Escribí el nombre, laboratorio o código de barras para buscar.<br>
+            <span style="font-size:11px;">Buscá desde 1 carácter — los resultados se filtran al instante.</span>
+          </div>
+
+          <!-- Product table: oculta hasta que haya búsqueda -->
+          <div class="prod-table-wrap" id="prodTableWrap" style="display:none;">
+            <table class="prod-table">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Laboratorio</th>
+                  <th>Precio</th>
+                  <th>Stock</th>
+                  <th>Cód. barras</th>
+                </tr>
+              </thead>
+              <tbody id="prodTableBody"></tbody>
+            </table>
+            <div id="prodOverflow" style="display:none;padding:6px 12px;background:#f9fafb;border-top:1px solid var(--border);font-size:11px;color:var(--muted);text-align:center;"></div>
+          </div>
+
+          <!-- Selected product bar -->
+          <div class="selected-bar" id="selectedBar">
+            <div style="flex:1;min-width:0;">
+              <div class="sel-name" id="selNombre">—</div>
+              <div class="sel-meta" id="selMeta">—</div>
+            </div>
+            <div class="sel-price">
+              <div class="pl">Precio unitario</div>
+              <div class="pv" id="selPrecio">$ 0</div>
+            </div>
+          </div>
+
+          <!-- Empaques -->
+          <div class="empaque-row" id="empaqueRow">
+            <label>Empaque:</label>
+            <select id="empaqueSelect">
+              <option value="">— sin empaque —</option>
+              <option value="caja12" data-factor="12" data-precio="35000">Caja x12 — $35,000</option>
+              <option value="blister6" data-factor="6" data-precio="18000">Blister x6 — $18,000</option>
+            </select>
+            <span class="emp-info" id="empInfo"></span>
+          </div>
+
+          <!-- Qty + Add -->
+          <div class="qty-add-row">
+            <div class="qty-field">
+              <label>Cantidad <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#aaa">(<span class="kbd">Enter</span> agrega)</span></label>
+              <input id="cantidad" type="number" min="1" step="1" value="1" placeholder="0">
+            </div>
+            <button class="btn-add-cart" id="btnAgregar">+ Agregar al carrito</button>
+          </div>
+
+          <div class="hint-bar">
+            <div class="hint-item"><span class="kbd">↑↓</span> navegar tabla</div>
+            <div class="hint-item"><span class="kbd">Enter</span> agregar ítem</div>
+            <div class="hint-item"><span class="kbd">Esc</span> limpiar</div>
+            <div class="hint-item"><span class="kbd">Ctrl+Enter</span> confirmar venta</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CARRITO DERECHA ── -->
+    <div style="position:sticky;top:14px;">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="cart-header-row">
+            <h2>Carrito</h2>
+            <span class="cart-badge" id="cartBadge">0</span>
+          </div>
+          <span style="font-size:11px;color:var(--muted);">Click en cantidad para editar</span>
+        </div>
+        <div class="panel-body">
+          <div id="cartEmpty" class="cart-empty">
+            El carrito está vacío.<br>
+            <span style="font-size:12px;">Seleccioná un producto y presioná <span class="kbd">Enter</span></span>
+          </div>
+          <div class="cart-items" id="cartItems" style="display:none;"></div>
+
+          <div class="cart-total-box">
+            <div class="lbl">Total</div>
+            <div class="amt" id="cartTotal">$ 0</div>
+            <div class="savings" id="cartSavings"></div>
+            <div class="cnt" id="cartCount">0 ítems</div>
+          </div>
+
+          <div class="cart-actions">
+            <button class="btn-confirm" id="btnConfirmar">&#10003; Confirmar venta &nbsp;<span class="kbd" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.25);color:white;font-size:10px;">Ctrl+Enter</span></button>
+            <button class="btn-print" id="btnImprimir">&#128424; Imprimir carrito</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="hist-box">
+    <div class="hist-stat"><label>Vendido hoy</label><div class="val">$ 128,400</div></div>
+    <div class="hist-stat"><label>Ventas hoy</label><div class="val">7</div></div>
+    <div class="hist-stat"><label>Total general</label><div class="val">$ 4,832,900</div></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════
+     CONFIRMATION DIALOG
+     ════════════════════════════════ -->
+<div class="dialog-overlay" id="dialogOverlay">
+  <div class="dialog">
+    <h3>Confirmar venta</h3>
+    <p class="dlg-sub">Revisá el resumen y elegí el método de pago.</p>
+
+    <!-- Date -->
+    <div class="dlg-field">
+      <label>Fecha de venta</label>
+      <input type="date" id="dlgFecha">
+    </div>
+
+    <!-- Cart summary -->
+    <div class="dlg-summary" id="dlgSummary"></div>
+
+    <!-- Payment method -->
+    <div class="dlg-field">
+      <label>Método de pago</label>
+      <div class="pago-row">
+        <div class="pago-btn active" data-pago="efectivo" id="pagoEfectivo">&#128181; Efectivo</div>
+        <div class="pago-btn" data-pago="transferencia" id="pagoTransfer">&#128247; Transferencia</div>
+      </div>
+    </div>
+
+    <!-- Cash change calculator (solo efectivo) -->
+    <div class="cash-calc" id="cashCalc">
+      <label>¿Con cuánto paga el cliente?</label>
+      <div class="cash-row">
+        <span style="font-size:18px;font-weight:800;color:var(--success);">$</span>
+        <input type="number" id="cashInput" placeholder="0" min="0" step="100">
+      </div>
+      <div class="vueltas-box">
+        <span class="vueltas-label">Vueltas:</span>
+        <span class="vueltas-val" id="vueltasVal">—</span>
+      </div>
+    </div>
+
+    <div class="dlg-actions">
+      <button class="dlg-cancel" id="dlgCancel">Cancelar</button>
+      <button class="dlg-ok" id="dlgOk">&#10003; Registrar venta</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+// ── Mock data ──
+const PRODUCTOS = [
+  { id:1,  nombre:'Acetaminofén 500mg',  lab:'Genfar',     precio:450,  cantidad:320, pres:'Tableta',      barras:'7702019010029' },
+  { id:2,  nombre:'Ibuprofeno 400mg',    lab:'Lafrancol',  precio:680,  cantidad:18,  pres:'Tableta',      barras:'7700056002187' },
+  { id:3,  nombre:'Loratadina 10mg',     lab:'MK',         precio:520,  cantidad:4,   pres:'Tableta',      barras:'7704324000138' },
+  { id:4,  nombre:'Omeprazol 20mg',      lab:'Genfar',     precio:890,  cantidad:0,   pres:'Cápsula',      barras:'7702628010043' },
+  { id:5,  nombre:'Metformina 850mg',    lab:'Lafrancol',  precio:720,  cantidad:142, pres:'Tableta',      barras:'7707019000051' },
+  { id:6,  nombre:'Atorvastatina 20mg',  lab:'MK',         precio:1100, cantidad:67,  pres:'Tableta',      barras:'7707019000068' },
+  { id:7,  nombre:'Amoxicilina 500mg',   lab:'Genfar',     precio:1350, cantidad:55,  pres:'Cápsula',      barras:'7702628010067' },
+  { id:8,  nombre:'Diclofenaco 50mg',    lab:'Lafrancol',  precio:380,  cantidad:7,   pres:'Tableta',      barras:'7700056002194' },
+  { id:9,  nombre:'Ranitidina 150mg',    lab:'Coaspharma', precio:290,  cantidad:200, pres:'Tableta',      barras:'7704324000145' },
+  { id:10, nombre:'Vitamina C 1000mg',   lab:'Bayer',      precio:3200, cantidad:34,  pres:'Efervescente', barras:'4901301285430' },
+];
+
+let selectedProduct = null;
+let selectedRowIdx  = -1;
+let tipoPago = 'efectivo';
+const carrito = []; // { nombre, cantidad, precio_unitario, descTipo:'%'|'$', descValor:0 }
+
+function fmt(n){ return Number(n||0).toLocaleString('es-CO',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function today(){ const d=new Date(),p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+function toast(msg,type='info'){
+  const c=document.getElementById('toast-container');
+  const el=document.createElement('div'); el.className=`toast toast-${type}`; el.textContent=msg;
+  el.onclick=()=>el.remove(); c.appendChild(el); setTimeout(()=>el.remove(),2800);
+}
+function stockChip(q){ return q===0?['stock-none','Sin stock']:q<=10?['stock-low',`Bajo: ${q}`]:['stock-ok',`${q} uds`]; }
+function calcDesc(it){
+  const bruto=it.cantidad*it.precio_unitario;
+  if(!it.descValor||it.descValor<=0) return {bruto,desc:0,neto:bruto};
+  const desc=it.descTipo==='%'?bruto*(it.descValor/100):Math.min(it.descValor,bruto);
+  return {bruto,desc,neto:bruto-desc};
+}
+
+// ── Product table ──
+const MAX_RESULTADOS = 15;
+let filteredProds = [];
+
+function renderProdTable(q=''){
+  const placeholder = document.getElementById('prodPlaceholder');
+  const tableWrap   = document.getElementById('prodTableWrap');
+  const overflow    = document.getElementById('prodOverflow');
+  const tbody       = document.getElementById('prodTableBody');
+
+  // Sin búsqueda → mostrar placeholder, ocultar tabla
+  if(!q.trim()){
+    filteredProds = [];
+    placeholder.style.display = 'block';
+    tableWrap.style.display   = 'none';
+    return;
+  }
+
+  const ql = q.toLowerCase();
+  const todos = PRODUCTOS.filter(p =>
+    p.nombre.toLowerCase().includes(ql) ||
+    p.lab.toLowerCase().includes(ql) ||
+    p.barras?.includes(q)
+  );
+
+  // Mostrar tabla, ocultar placeholder
+  placeholder.style.display = 'none';
+  tableWrap.style.display   = '';
+
+  if(!todos.length){
+    filteredProds = [];
+    tbody.innerHTML = `<tr><td colspan="5" class="prod-empty">Sin resultados para "<strong>${q}</strong>"</td></tr>`;
+    overflow.style.display = 'none';
+    return;
+  }
+
+  // Recortamos a MAX_RESULTADOS para no abrumar la tabla
+  filteredProds = todos.slice(0, MAX_RESULTADOS);
+
+  tbody.innerHTML = filteredProds.map((p,i)=>{
+    const [cls,txt] = stockChip(p.cantidad);
+    const sel = selectedProduct && selectedProduct.id === p.id;
+    return `<tr class="${sel?'selected':''}" data-idx="${i}">
+      <td class="td-nombre">${p.nombre}<br><small style="font-weight:400;color:var(--muted);font-size:11px;">${p.pres}</small></td>
+      <td style="font-size:12px;color:var(--muted);">${p.lab}</td>
+      <td class="td-precio">$ ${fmt(p.precio)}</td>
+      <td><span class="stock-chip ${cls}">${txt}</span></td>
+      <td style="font-size:11px;font-family:monospace;color:var(--muted);">${p.barras||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('tr').forEach(row=>{
+    row.addEventListener('click',()=>{
+      const idx = parseInt(row.dataset.idx);
+      if(!isNaN(idx)) selectProduct(filteredProds[idx]);
+    });
+  });
+
+  // Aviso de overflow si hay más de MAX_RESULTADOS coincidencias
+  if(todos.length > MAX_RESULTADOS){
+    overflow.textContent = `Mostrando ${MAX_RESULTADOS} de ${todos.length} resultados — refiná la búsqueda para ver más.`;
+    overflow.style.display = 'block';
+  } else {
+    overflow.style.display = 'none';
+  }
+}
+
+function selectProduct(p){
+  selectedProduct = p;
+  // find index in filtered
+  selectedRowIdx = filteredProds.findIndex(x=>x.id===p.id);
+  renderProdTable(document.getElementById('buscar').value);
+
+  document.getElementById('selNombre').textContent = p.nombre;
+  document.getElementById('selMeta').textContent = `${p.lab} · ${p.pres}`;
+  document.getElementById('selPrecio').textContent = '$ ' + fmt(p.precio);
+  document.getElementById('selectedBar').classList.add('show');
+
+  const showEmp = p.pres==='Tableta'||p.pres==='Cápsula';
+  document.getElementById('empaqueRow').classList.toggle('show', showEmp);
+
+  const cantEl=document.getElementById('cantidad');
+  cantEl.value='1';
+  setTimeout(()=>{ cantEl.focus(); cantEl.select(); },40);
+}
+
+// ── Keyboard nav in table ──
+document.getElementById('buscar').addEventListener('input', function(){
+  renderProdTable(this.value);
+  // Solo limpia la selección si el usuario borró el campo o cambió la búsqueda
+  if(!this.value.trim() || (selectedProduct && !filteredProds.find(p=>p.id===selectedProduct?.id))){
+    selectedProduct=null; selectedRowIdx=-1;
+    document.getElementById('selectedBar').classList.remove('show');
+    document.getElementById('empaqueRow').classList.remove('show');
+  }
+});
+
+document.getElementById('buscar').addEventListener('keydown', e=>{
+  if(!filteredProds.length) return;
+  if(e.key==='ArrowDown'){ e.preventDefault();
+    selectedRowIdx=Math.min(selectedRowIdx+1,filteredProds.length-1);
+    selectProduct(filteredProds[selectedRowIdx]);
+  } else if(e.key==='ArrowUp'){ e.preventDefault();
+    selectedRowIdx=Math.max(selectedRowIdx-1,0);
+    selectProduct(filteredProds[selectedRowIdx]);
+  } else if(e.key==='Enter' && selectedProduct){ e.preventDefault(); agregarAlCarrito(); }
+});
+
+document.getElementById('cantidad').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); agregarAlCarrito(); } });
+document.getElementById('btnAgregar').addEventListener('click', agregarAlCarrito);
+
+document.getElementById('empaqueSelect').addEventListener('change', function(){
+  const opt=this.options[this.selectedIndex];
+  if(!opt.value||!selectedProduct){ document.getElementById('empInfo').textContent=''; return; }
+  document.getElementById('empInfo').textContent=`= ${fmt(parseInt(opt.dataset.precio))} / empaque de ${opt.dataset.factor} uds`;
+});
+
+function agregarAlCarrito(){
+  if(!selectedProduct){ toast('Seleccioná un producto de la tabla','error'); document.getElementById('buscar').focus(); return; }
+  if(selectedProduct.cantidad===0){ toast('Producto sin stock','error'); return; }
+  const cantEl=document.getElementById('cantidad');
+  const cant=parseInt(cantEl.value);
+  if(!(cant>0)){ toast('Ingresá una cantidad válida','error'); cantEl.focus(); return; }
+  if(cant>selectedProduct.cantidad){ toast(`Solo hay ${selectedProduct.cantidad} en stock`,'error'); cantEl.focus(); return; }
+
+  const emSel=document.getElementById('empaqueSelect');
+  const emOpt=emSel.options[emSel.selectedIndex];
+  let nombre=selectedProduct.nombre, precio=selectedProduct.precio;
+  if(emOpt&&emOpt.value){ precio=parseInt(emOpt.dataset.precio); nombre+=` (${emOpt.textContent.split('—')[0].trim()})`; }
+
+  carrito.push({nombre,cantidad:cant,precio_unitario:precio,descTipo:'%',descValor:0});
+  renderCarrito();
+  toast(`${nombre} agregado`,'success');
+  limpiarForm();
+  document.getElementById('buscar').focus();
+}
+
+function limpiarForm(){
+  selectedProduct=null; selectedRowIdx=-1;
+  document.getElementById('buscar').value='';
+  document.getElementById('cantidad').value='1';
+  document.getElementById('selectedBar').classList.remove('show');
+  document.getElementById('empaqueRow').classList.remove('show');
+  document.getElementById('empaqueSelect').selectedIndex=0;
+  document.getElementById('empInfo').textContent='';
+  renderProdTable('');
+}
+
+document.getElementById('btnLimpiar').addEventListener('click',()=>{ limpiarForm(); document.getElementById('buscar').focus(); });
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&!document.getElementById('dialogOverlay').classList.contains('open')){ limpiarForm(); document.getElementById('buscar').focus(); }
+  if(e.key==='Enter'&&e.ctrlKey){ e.preventDefault(); abrirDialog(); }
+});
+
+// ── Cart render ──
+function renderCarrito(){
+  const empty=document.getElementById('cartEmpty'),items=document.getElementById('cartItems');
+  const badge=document.getElementById('cartBadge'),totalEl=document.getElementById('cartTotal');
+  const countEl=document.getElementById('cartCount'),savEl=document.getElementById('cartSavings');
+  if(!carrito.length){ empty.style.display='block';items.style.display='none';badge.classList.remove('show');totalEl.textContent='$ 0';countEl.textContent='0 ítems';savEl.classList.remove('show');return; }
+  empty.style.display='none';items.style.display='flex';badge.classList.add('show');badge.textContent=carrito.length;
+  let totalN=0,totalD=0;
+  items.innerHTML='';
+  carrito.forEach((it,idx)=>{
+    const {bruto,desc,neto}=calcDesc(it); totalN+=neto; totalD+=desc;
+    const hasDsc=desc>0;
+    const div=document.createElement('div');
+    div.className='cart-item'+(hasDsc?' has-discount':''); div.dataset.idx=idx;
+    div.innerHTML=`
+      <div class="ci-top">
+        <div class="ci-name">${it.nombre}</div>
+        <button class="ci-btn-del" data-idx="${idx}" title="Eliminar">✕</button>
+      </div>
+      <div class="ci-bottom">
+        <div class="ci-qty-wrap">
+          <button class="qty-btn" data-action="dec" data-idx="${idx}">−</button>
+          <input class="ci-qty" type="number" min="1" value="${it.cantidad}" data-idx="${idx}">
+          <button class="qty-btn" data-action="inc" data-idx="${idx}">+</button>
+        </div>
+        <span class="ci-unit-price">× $ ${fmt(it.precio_unitario)}</span>
+        <button class="ci-btn-disc${hasDsc?' active':''}" data-idx="${idx}" title="Descuento">%</button>
+        <div style="margin-left:auto;text-align:right;">
+          ${hasDsc?`<div class="ci-original">$ ${fmt(bruto)}</div>`:''}
+          <div class="ci-subtotal">$ ${fmt(neto)}</div>
+        </div>
+      </div>
+      <div class="ci-disc-row${hasDsc?' open':''}" id="dr-${idx}">
+        <div class="disc-toggle">
+          <button class="disc-tbtn${it.descTipo==='%'?' active':''}" data-type="%" data-idx="${idx}">%</button>
+          <button class="disc-tbtn${it.descTipo==='$'?' active':''}" data-type="$" data-idx="${idx}">$</button>
+        </div>
+        <div class="disc-input-wrap">
+          <input type="number" min="0" step="${it.descTipo==='%'?1:100}" value="${it.descValor||''}" placeholder="0" class="dv-input" data-idx="${idx}">
+          <span class="disc-unit">${it.descTipo==='%'?'% off':'$ off'}</span>
+        </div>
+        ${hasDsc?`<span class="disc-result">− $ ${fmt(desc)}</span>`:''}
+        <button class="disc-clear" data-idx="${idx}">✕ quitar</button>
+      </div>`;
+    items.appendChild(div);
+  });
+
+  // events
+  items.querySelectorAll('.qty-btn').forEach(b=>b.addEventListener('click',()=>{ const i=parseInt(b.dataset.idx),d=b.dataset.action==='inc'?1:-1; carrito[i].cantidad=Math.max(1,carrito[i].cantidad+d); renderCarrito(); }));
+  items.querySelectorAll('.ci-qty').forEach(inp=>{
+    inp.addEventListener('change',()=>{ const i=parseInt(inp.dataset.idx),v=parseInt(inp.value); if(v>0){carrito[i].cantidad=v;renderCarrito();}else inp.value=carrito[i].cantidad; });
+    inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();inp.blur();} if(e.key==='Escape'){inp.value=carrito[parseInt(inp.dataset.idx)].cantidad;inp.blur();} });
+  });
+  items.querySelectorAll('.ci-btn-del').forEach(b=>b.addEventListener('click',()=>{ const i=parseInt(b.dataset.idx),n=carrito[i].nombre; carrito.splice(i,1); renderCarrito(); toast(`"${n}" eliminado`,'info'); }));
+  items.querySelectorAll('.ci-btn-disc').forEach(b=>b.addEventListener('click',()=>{ const i=parseInt(b.dataset.idx),row=document.getElementById(`dr-${i}`),open=row.classList.toggle('open'); b.classList.toggle('active',open); if(open)row.querySelector('.dv-input')?.focus(); }));
+  items.querySelectorAll('.disc-tbtn').forEach(b=>b.addEventListener('click',()=>{ const i=parseInt(b.dataset.idx); carrito[i].descTipo=b.dataset.type; carrito[i].descValor=0; renderCarrito(); const row=document.getElementById(`dr-${i}`); row.classList.add('open'); items.querySelector(`.ci-btn-disc[data-idx="${i}"]`)?.classList.add('active'); row.querySelector('.dv-input')?.focus(); }));
+  items.querySelectorAll('.dv-input').forEach(inp=>{
+    inp.addEventListener('input',()=>{
+      const i=parseInt(inp.dataset.idx); carrito[i].descValor=parseFloat(inp.value)||0;
+      const {bruto,desc,neto}=calcDesc(carrito[i]);
+      const ci=items.querySelector(`.cart-item[data-idx="${i}"]`);
+      if(ci){ const s=ci.querySelector('.ci-subtotal'),o=ci.querySelector('.ci-original'),r=ci.querySelector('.disc-result'); if(s)s.textContent=`$ ${fmt(neto)}`; if(o)o.textContent=`$ ${fmt(bruto)}`; if(r)r.textContent=`− $ ${fmt(desc)}`; ci.classList.toggle('has-discount',desc>0); }
+      const tN=carrito.reduce((s,x)=>s+calcDesc(x).neto,0),tD=carrito.reduce((s,x)=>s+calcDesc(x).desc,0);
+      totalEl.textContent=`$ ${fmt(tN)}`; if(tD>0){savEl.textContent=`Descuentos: − $ ${fmt(tD)}`;savEl.classList.add('show');}else savEl.classList.remove('show');
+    });
+    inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();renderCarrito();document.getElementById('buscar').focus();} });
+  });
+  items.querySelectorAll('.disc-clear').forEach(b=>b.addEventListener('click',()=>{ carrito[parseInt(b.dataset.idx)].descValor=0; renderCarrito(); }));
+
+  totalEl.textContent=`$ ${fmt(totalN)}`; countEl.textContent=`${carrito.length} ítem${carrito.length!==1?'s':''}`;
+  if(totalD>0){savEl.textContent=`Descuentos: − $ ${fmt(totalD)}`;savEl.classList.add('show');}else savEl.classList.remove('show');
+}
+
+// ── Confirmation dialog ──
+document.getElementById('btnConfirmar').addEventListener('click', abrirDialog);
+document.getElementById('dlgCancel').addEventListener('click', cerrarDialog);
+document.getElementById('dialogOverlay').addEventListener('click', e=>{ if(e.target===e.currentTarget) cerrarDialog(); });
+
+document.querySelectorAll('.pago-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.pago-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active'); tipoPago=btn.dataset.pago;
+    document.getElementById('cashCalc').style.display=tipoPago==='efectivo'?'block':'none';
+    if(tipoPago==='efectivo') document.getElementById('cashInput').focus();
+  });
+});
+
+document.getElementById('cashInput').addEventListener('input', calcVueltas);
+
+function calcVueltas(){
+  const total=carrito.reduce((s,it)=>s+calcDesc(it).neto,0);
+  const con=parseFloat(document.getElementById('cashInput').value)||0;
+  const vuEl=document.getElementById('vueltasVal');
+  if(con===0){ vuEl.textContent='—'; vuEl.className='vueltas-val'; return; }
+  const vueltas=con-total;
+  if(vueltas<0){ vuEl.textContent=`Faltan $ ${fmt(Math.abs(vueltas))}`; vuEl.className='vueltas-val negative'; }
+  else if(vueltas===0){ vuEl.textContent='Exacto ✓'; vuEl.className='vueltas-val exact'; }
+  else { vuEl.textContent=`$ ${fmt(vueltas)}`; vuEl.className='vueltas-val'; }
+}
+
+function abrirDialog(){
+  if(!carrito.length){ toast('El carrito está vacío','error'); return; }
+  // fill summary
+  const total=carrito.reduce((s,it)=>s+calcDesc(it).neto,0);
+  const totalDesc=carrito.reduce((s,it)=>s+calcDesc(it).desc,0);
+  let rows=carrito.map(it=>{const {neto}=calcDesc(it);return`<div class="dlg-summary-row"><span>${it.nombre} ×${it.cantidad}</span><span>$ ${fmt(neto)}</span></div>`;}).join('');
+  if(totalDesc>0) rows+=`<div class="dlg-summary-row" style="color:var(--discount)"><span>Descuentos</span><span>− $ ${fmt(totalDesc)}</span></div>`;
+  rows+=`<div class="dlg-summary-row total-row"><span>Total</span><span>$ ${fmt(total)}</span></div>`;
+  document.getElementById('dlgSummary').innerHTML=rows;
+  // reset
+  document.getElementById('dlgFecha').value=today();
+  document.getElementById('cashInput').value='';
+  document.getElementById('vueltasVal').textContent='—';
+  document.getElementById('vueltasVal').className='vueltas-val';
+  document.getElementById('cashCalc').style.display='block';
+  document.querySelectorAll('.pago-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('pagoEfectivo').classList.add('active');
+  tipoPago='efectivo';
+  document.getElementById('dialogOverlay').classList.add('open');
+  setTimeout(()=>document.getElementById('cashInput').focus(),100);
+}
+
+function cerrarDialog(){ document.getElementById('dialogOverlay').classList.remove('open'); }
+
+document.getElementById('dlgOk').addEventListener('click',()=>{
+  const total=carrito.reduce((s,it)=>s+calcDesc(it).neto,0);
+  const con=parseFloat(document.getElementById('cashInput').value)||0;
+  if(tipoPago==='efectivo'&&con>0&&con<total){ toast(`Faltan $ ${fmt(total-con)} para completar el pago`,'error'); return; }
+  cerrarDialog();
+  toast(`Venta registrada — $ ${fmt(total)} (${tipoPago})`,'success');
+  carrito.length=0; renderCarrito(); limpiarForm(); document.getElementById('buscar').focus();
+});
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&document.getElementById('dialogOverlay').classList.contains('open')) cerrarDialog();
+});
+
+// init — la tabla arranca vacía, el placeholder visible
+document.getElementById('dlgFecha').value=today();
+document.getElementById('buscar').focus();
+</script>
+</body>
+</html>

@@ -8,22 +8,21 @@ import (
 
 type Item struct {
 	gorm.Model
-	// Clave foránea hacia la venta dueña del item
 	VentaID        uint     `json:"venta_id"`
 	ProductoID     uint     `json:"producto_id"`
 	Producto       Producto `gorm:"foreignKey:ProductoID" json:"producto"`
 	Cantidad       int      `json:"cantidad"`
 	PrecioUnitario float64  `json:"precio_unitario"`
+	Descuento      float64  `json:"descuento"     gorm:"default:0"` // monto descontado en pesos
+	DescuentoPct   float64  `json:"descuento_pct" gorm:"default:0"` // porcentaje (informativo)
 }
 
-// Venta guarda cada transacción de venta
 type Venta struct {
 	gorm.Model
-
-	Folio uint `json:"folio"`
-	// Relación 1:N con los items de la venta
-	Items    []Item    `gorm:"foreignKey:VentaID;constraint:OnDelete:CASCADE" json:"items"`
-	Total    float64   `json:"total"`
-	TipoPago string    `json:"tipo_pago"`
-	Fecha    time.Time `json:"fecha"` // guardamos como time.Time para filtrar fácilmente
+	Folio           uint      `json:"folio"`
+	Items           []Item    `gorm:"foreignKey:VentaID;constraint:OnDelete:CASCADE" json:"items"`
+	Total           float64   `json:"total"`
+	TotalDescuentos float64   `json:"total_descuentos" gorm:"default:0"`
+	TipoPago        string    `json:"tipo_pago"`
+	Fecha           time.Time `json:"fecha"`
 }
