@@ -84,9 +84,9 @@
     .nv-cart-badge{background:var(--accent);color:var(--primary-dark);border-radius:50%;width:20px;height:20px;font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;}
     .nv-cart-badge.show{display:inline-flex;}
     .nv-cart-empty{text-align:center;padding:28px 16px;color:var(--muted);border:2px dashed var(--border);border-radius:8px;font-size:13px;}
-    .nv-cart-items{display:flex;flex-direction:column;gap:5px;max-height:40vh;overflow-y:auto;padding-right:2px;}
+    .nv-cart-items{display:flex;flex-direction:column;gap:5px;max-height:40vh;overflow-y:auto;padding-right:2px;overflow-x:hidden;}
 
-    .nv-ci{border:1px solid var(--border);border-radius:8px;background:white;overflow:hidden;transition:border-color .15s;}
+    .nv-ci{border:1px solid var(--border);border-radius:8px;background:white;overflow:hidden;transition:border-color .15s;flex-shrink:0;}
     .nv-ci:hover{border-color:#bdd4f5;}
     .nv-ci.has-disc{border-color:#c4b5fd;background:#faf5ff;}
     .nv-ci-top{display:flex;align-items:flex-start;gap:6px;padding:8px 10px 4px;}
