@@ -84,7 +84,7 @@
     .nv-cart-badge{background:var(--accent);color:var(--primary-dark);border-radius:50%;width:20px;height:20px;font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;}
     .nv-cart-badge.show{display:inline-flex;}
     .nv-cart-empty{text-align:center;padding:28px 16px;color:var(--muted);border:2px dashed var(--border);border-radius:8px;font-size:13px;}
-    .nv-cart-items{display:flex;flex-direction:column;gap:5px;}
+    .nv-cart-items{display:flex;flex-direction:column;gap:5px;max-height:40vh;overflow-y:auto;padding-right:2px;}
 
     .nv-ci{border:1px solid var(--border);border-radius:8px;background:white;overflow:hidden;transition:border-color .15s;}
     .nv-ci:hover{border-color:#bdd4f5;}
@@ -134,11 +134,11 @@
     /* ── Diálogo ── */
     .nv-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;align-items:center;justify-content:center;}
     .nv-overlay.open{display:flex;}
-    .nv-dialog{background:white;border-radius:14px;padding:28px;width:100%;max-width:430px;box-shadow:0 20px 60px rgba(0,0,0,.2);animation:dlgIn .2s ease;}
+    .nv-dialog{background:white;border-radius:14px;padding:28px;width:100%;max-width:430px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);animation:dlgIn .2s ease;}
     @keyframes dlgIn{from{opacity:0;transform:scale(.94) translateY(-8px);}to{opacity:1;transform:scale(1) translateY(0);}}
     .nv-dialog h3{font-size:17px;font-weight:800;color:var(--primary-dark);margin-bottom:4px;}
     .nv-dialog .dlg-sub{font-size:13px;color:var(--muted);margin-bottom:16px;}
-    .nv-dlg-summary{background:#f7f9fc;border-radius:8px;padding:10px 14px;margin-bottom:16px;border:1px solid var(--border);}
+    .nv-dlg-summary{background:#f7f9fc;border-radius:8px;padding:10px 14px;margin-bottom:16px;border:1px solid var(--border);max-height:30vh;overflow-y:auto;}
     .nv-dlg-row{display:flex;justify-content:space-between;font-size:13px;padding:2px 0;}
     .nv-dlg-row.total{font-weight:800;font-size:16px;color:var(--primary-dark);border-top:1px solid var(--border);margin-top:6px;padding-top:6px;}
     .nv-dlg-field{margin-bottom:14px;}
