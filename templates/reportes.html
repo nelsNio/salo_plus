@@ -360,7 +360,9 @@ async function registrarEgreso(e) {
   e.preventDefault();
   const form=document.getElementById('formEgreso');
   const fd=new FormData(form);
-  const payload={concepto:fd.get('concepto'),monto:parseFloat(fd.get('monto')||'0'),tipo:fd.get('tipo'),tipo_pago:fd.get('tipo_pago'),descripcion:fd.get('descripcion')||'',fecha:fd.get('fecha')};
+  const fechaRaw=fd.get('fecha');
+  const fechaISO=fechaRaw?(fechaRaw+'T00:00:00Z'):new Date().toISOString();
+  const payload={concepto:fd.get('concepto'),monto:parseFloat(fd.get('monto')||'0'),tipo:fd.get('tipo'),tipo_pago:fd.get('tipo_pago'),descripcion:fd.get('descripcion')||'',fecha:fechaISO};
   if(!payload.concepto||!(payload.monto>0)){showToast('Concepto y monto requeridos','error');return;}
   try{
     const res=await fetch('/egresos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
