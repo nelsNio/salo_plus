@@ -139,7 +139,9 @@
     .nv-dialog h3{font-size:17px;font-weight:800;color:var(--primary-dark);margin-bottom:4px;}
     .nv-dialog .dlg-sub{font-size:13px;color:var(--muted);margin-bottom:16px;}
     .nv-dlg-summary{background:#f7f9fc;border-radius:8px;padding:10px 14px;margin-bottom:16px;border:1px solid var(--border);max-height:30vh;overflow-y:auto;}
-    .nv-dlg-row{display:flex;justify-content:space-between;font-size:13px;padding:2px 0;}
+    .nv-dlg-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:13px;padding:2px 0;}
+    .nv-dlg-row span:first-child{flex:1;}
+    .nv-dlg-row span:last-child{white-space:nowrap;flex-shrink:0;text-align:right;}
     .nv-dlg-row.total{font-weight:800;font-size:16px;color:var(--primary-dark);border-top:1px solid var(--border);margin-top:6px;padding-top:6px;}
     .nv-dlg-field{margin-bottom:14px;}
     .nv-dlg-field label{display:block;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}
@@ -164,7 +166,8 @@
     .nv-dlg-cancel{background:#f3f4f6;color:var(--text);}
     .nv-dlg-cancel:hover{background:var(--border);}
     .nv-dlg-ok{background:#16a34a;color:white;}
-    .nv-dlg-ok:hover{background:#15803d;}
+    .nv-dlg-ok:hover:not(:disabled){background:#15803d;}
+    .nv-dlg-ok:disabled{background:#86efac;cursor:not-allowed;opacity:.8;}
 
     /* ── Historial ── */
     .hist-totals{background:white;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:14px 20px;margin:16px 0;display:flex;gap:28px;flex-wrap:wrap;}
@@ -702,6 +705,11 @@ document.getElementById('nv-dlg-ok').addEventListener('click', async ()=>{
   const con=parseFloat(document.getElementById('nv-cash-input').value)||0;
   if(tipoPago==='efectivo'&&con>0&&con<total){showToast(`Faltan $ ${fmtCOP(total-con)} para completar el pago`,'error');return;}
 
+  // Deshabilitar botón para evitar doble submit
+  const btnOk=document.getElementById('nv-dlg-ok');
+  btnOk.disabled=true;
+  btnOk.textContent='Registrando...';
+
   const fechaVal=document.getElementById('nv-dlg-fecha').value;
   let fechaISO=new Date().toISOString();
   if(fechaVal){ const iso=isoFromDateInput(fechaVal); if(iso) fechaISO=iso; }
@@ -739,7 +747,12 @@ document.getElementById('nv-dlg-ok').addEventListener('click', async ()=>{
     invalidarCacheProductos();
     await cargarVentas();
     buscarEl.focus();
-  } catch(e){ showToast(e.message||'Error al confirmar venta','error'); }
+  } catch(e){
+    showToast(e.message||'Error al confirmar venta','error');
+    // Rehabilitar botón para que pueda reintentar
+    btnOk.disabled=false;
+    btnOk.innerHTML='&#10003; Registrar venta';
+  }
 });
 
 // ── Teclado global ──
