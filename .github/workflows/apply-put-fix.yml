@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - hotfix/solve_problem_put
+  workflow_dispatch:
 
 jobs:
   fix:
@@ -13,6 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Patch static/script.js
+        shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -23,8 +25,8 @@ jobs:
                     if (!prod) { showToast('Producto no encontrado', 'error'); span.textContent = originalText; return; }
                     prod[field] = parsed;
 """
-          new = """                    // No usar /productos?lite=true para PUT: ese endpoint omite campos del producto.
-                    // Obtenemos el registro completo para no borrar lote, fechas, INVIMA u observación.
+          new = """                    // Obtener el producto completo. /productos?lite=true omite campos
+                    // como lote, fechas, INVIMA y observación, y PUT los borraría.
                     const prodResp = await fetch(`/productos/${id}`);
                     if (!prodResp.ok) {
                         const e = await prodResp.json().catch(() => ({}));
@@ -35,14 +37,16 @@ jobs:
                     prod[field] = parsed;
 """
           if old not in text:
-              raise SystemExit('No se encontró el bloque de edición esperado')
+              raise SystemExit('No se encontró el bloque de edición esperado en static/script.js')
           path.write_text(text.replace(old, new, 1))
           PY
-      - name: Commit patch and remove temporary workflow
+      - name: Commit script change and remove temporary workflow
+        shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm .github/workflows/apply-put-fix.yml
           git add static/script.js
           git commit -m 'fix: preserve product fields on PUT edit'
+          git rm .github/workflows/apply-put-fix.yml
+          git commit -m 'chore: remove temporary PUT fix workflow'
           git push
