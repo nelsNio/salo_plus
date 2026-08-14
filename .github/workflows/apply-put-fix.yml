@@ -1,0 +1,48 @@
+name: Apply product PUT fix
+
+on:
+  push:
+    branches:
+      - hotfix/solve_problem_put
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch static/script.js
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('static/script.js')
+          text = path.read_text()
+          old = """                    const todosCached = await getProductosCached();
+                    const prod = todosCached.find(x => String(x.ID) === String(id));
+                    if (!prod) { showToast('Producto no encontrado', 'error'); span.textContent = originalText; return; }
+                    prod[field] = parsed;
+"""
+          new = """                    // No usar /productos?lite=true para PUT: ese endpoint omite campos del producto.
+                    // Obtenemos el registro completo para no borrar lote, fechas, INVIMA u observación.
+                    const prodResp = await fetch(`/productos/${id}`);
+                    if (!prodResp.ok) {
+                        const e = await prodResp.json().catch(() => ({}));
+                        throw new Error(e.error || 'No se pudo obtener el producto');
+                    }
+                    const prod = await prodResp.json();
+                    if (!prod) { showToast('Producto no encontrado', 'error'); span.textContent = originalText; return; }
+                    prod[field] = parsed;
+"""
+          if old not in text:
+              raise SystemExit('No se encontró el bloque de edición esperado')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit patch and remove temporary workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/apply-put-fix.yml
+          git add static/script.js
+          git commit -m 'fix: preserve product fields on PUT edit'
+          git push
