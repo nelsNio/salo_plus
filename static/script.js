@@ -3,6 +3,7 @@ var _PROD_CACHE_TTL = 3 * 60 * 1000;
 var _prodCache     = null;
 var _prodCacheTs   = 0;
 
+
 async function getProductosCached(forceRefresh) {
     forceRefresh = forceRefresh || false;
     var now = Date.now();
@@ -18,6 +19,23 @@ async function getProductosCached(forceRefresh) {
     lista.forEach(function(p) { window.__productosById[p.ID] = p; });
     return lista;
 }
+// Obtiene el producto completo para realizar el PUT
+async function getCompleteProductForPut(id) {
+    const resp = await fetch(`/productos/${id}`);
+
+    const product = await resp.json().catch(() => null);
+
+    if (!resp.ok) {
+        throw new Error(product?.error || 'No se pudo obtener el producto');
+    }
+
+    if (!product) {
+        throw new Error('Producto no encontrado');
+    }
+
+    return product;
+}
+
 
 function invalidarCacheProductos() {
     _prodCache   = null;
@@ -1027,10 +1045,16 @@ async function cargarProductos(q = "") {
                 if (!changed) { span.textContent = originalText; return; }
 
                 try {
-                    const todosCached = await getProductosCached();
-                    const prod = todosCached.find(x => String(x.ID) === String(id));
+                    /** ignore cach b'cause it generate fix in PUT
+                    ** const todosCached = await getProductosCached();
+                    const prod = todosCached.find(x => String(x.ID) === String(id)); 
                     if (!prod) { showToast('Producto no encontrado', 'error'); span.textContent = originalText; return; }
                     prod[field] = parsed;
+                    **/
+                    const prod = await getCompleteProductForPut(id);
+                    prod[field] = parsed;
+
+                    
                     const resp = await fetch(`/productos/${id}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
